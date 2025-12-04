@@ -72,3 +72,12 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Photo Roulette specific
+src/config/production.ts
+src/config/secrets.ts
+
+# Backend
+backend/node_modules/
+backend/.env
+backend/npm-debug.log*
