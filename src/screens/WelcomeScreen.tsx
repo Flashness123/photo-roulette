@@ -9,23 +9,45 @@ import {
   Dimensions,
   Alert,
 } from 'react-native';
+import { gameService } from '../services/gameService';
 
 const {width, height} = Dimensions.get('window');
 
 const WelcomeScreen: React.FC = () => {
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleCreateGame = () => {
+  const handleCreateGame = async () => {
     if (!playerName.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return;
     }
-    // TODO: Implement game creation
-    console.log('Creating game for player:', playerName);
+    
+    setIsLoading(true);
+    try {
+      console.log('Creating game for player:', playerName);
+      const result = await gameService.createRoom(playerName);
+      
+      if (result) {
+        Alert.alert(
+          'Room Created! 🎉', 
+          `Room code: ${result.room.code}\n\nShare this code with other players!`,
+          [{ text: 'OK' }]
+        );
+        console.log('Room created successfully:', result);
+      } else {
+        Alert.alert('Error', 'Failed to create room. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error creating room:', error);
+      Alert.alert('Error', 'Failed to create room. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleJoinGame = () => {
+  const handleJoinGame = async () => {
     if (!playerName.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return;
@@ -34,8 +56,28 @@ const WelcomeScreen: React.FC = () => {
       Alert.alert('Error', 'Please enter a valid 6-digit room code');
       return;
     }
-    // TODO: Implement game joining
-    console.log('Joining game:', roomCode, 'as player:', playerName);
+    
+    setIsLoading(true);
+    try {
+      console.log('Joining game:', roomCode, 'as player:', playerName);
+      const result = await gameService.joinRoom(roomCode, playerName);
+      
+      if (result) {
+        Alert.alert(
+          'Joined Room! 🎉', 
+          `Welcome to room ${result.room.code}!\n\nPlayers: ${result.room.players.length}`,
+          [{ text: 'OK' }]
+        );
+        console.log('Joined room successfully:', result);
+      } else {
+        Alert.alert('Error', 'Failed to join room. Please check the code and try again.');
+      }
+    } catch (error) {
+      console.error('Error joining room:', error);
+      Alert.alert('Error', 'Failed to join room. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -68,10 +110,13 @@ const WelcomeScreen: React.FC = () => {
       {/* Action Buttons */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
-          style={[styles.button, styles.createButton]}
+          style={[styles.button, styles.createButton, isLoading && styles.disabledButton]}
           onPress={handleCreateGame}
+          disabled={isLoading}
         >
-          <Text style={styles.buttonText}>Create game</Text>
+          <Text style={styles.buttonText}>
+            {isLoading ? 'Creating...' : 'Create game'}
+          </Text>
         </TouchableOpacity>
 
         {/* Join Game Section */}
@@ -86,10 +131,13 @@ const WelcomeScreen: React.FC = () => {
             keyboardType="number-pad"
           />
           <TouchableOpacity
-            style={[styles.button, styles.joinButton]}
+            style={[styles.button, styles.joinButton, isLoading && styles.disabledButton]}
             onPress={handleJoinGame}
+            disabled={isLoading}
           >
-            <Text style={styles.buttonText}>Join game</Text>
+            <Text style={styles.buttonText}>
+              {isLoading ? 'Joining...' : 'Join game'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -235,6 +283,9 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 24,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
 

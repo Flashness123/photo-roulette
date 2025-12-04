@@ -10,8 +10,8 @@ export const config = {
   
   // Railway Backend Configuration (for WebSocket connections)
   backend: {
-    url: process.env.BACKEND_URL || 'https://your-app-name.up.railway.app',
-    wsUrl: process.env.WS_URL || 'https://your-app-name.up.railway.app',
+    url: process.env.BACKEND_URL || 'https://photo-roulette-production-b12d.up.railway.app',
+    wsUrl: process.env.WS_URL || 'https://photo-roulette-production-b12d.up.railway.app',
   },
   
   // Game Configuration

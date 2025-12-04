@@ -1,18 +1,7 @@
-import { supabase } from './supabase';
 import { GameRoom, Player, GameStatus } from '../types/game';
 import { config } from '../config';
-import io, { Socket } from 'socket.io-client';
 
 class GameService {
-  private socket: Socket | null = null;
-
-  // Initialize WebSocket connection
-  private initSocket(): Socket {
-    if (!this.socket) {
-      this.socket = io(config.backend.wsUrl);
-    }
-    return this.socket;
-  }
   // Generate a random 6-digit room code
   private generateRoomCode(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -21,6 +10,9 @@ class GameService {
   // Create a new game room
   async createRoom(hostName: string): Promise<{ room: GameRoom; player: Player } | null> {
     try {
+      console.log('Creating room for:', hostName);
+      console.log('Backend URL:', config.backend.url);
+      
       const response = await fetch(`${config.backend.url}/api/rooms/create`, {
         method: 'POST',
         headers: {
@@ -29,13 +21,16 @@ class GameService {
         body: JSON.stringify({ hostName }),
       });
 
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        const error = await response.json();
-        console.error('Error creating room:', error);
+        const errorText = await response.text();
+        console.error('Error creating room:', errorText);
         return null;
       }
 
       const data = await response.json();
+      console.log('Room created:', data);
       
       const room: GameRoom = {
         id: data.room.id,
@@ -57,13 +52,6 @@ class GameService {
         score: data.player.score,
       };
 
-      // Connect to WebSocket and join room
-      const socket = this.initSocket();
-      socket.emit('joinRoom', {
-        roomId: room.id,
-        playerId: player.id,
-      });
-
       return { room, player };
     } catch (error) {
       console.error('Error in createRoom:', error);
@@ -74,6 +62,8 @@ class GameService {
   // Join an existing game room
   async joinRoom(roomCode: string, playerName: string): Promise<{ room: GameRoom; player: Player } | null> {
     try {
+      console.log('Joining room:', roomCode, 'as:', playerName);
+      
       const response = await fetch(`${config.backend.url}/api/rooms/join`, {
         method: 'POST',
         headers: {
@@ -82,13 +72,16 @@ class GameService {
         body: JSON.stringify({ roomCode, playerName }),
       });
 
+      console.log('Join response status:', response.status);
+
       if (!response.ok) {
-        const error = await response.json();
-        console.error('Error joining room:', error);
+        const errorText = await response.text();
+        console.error('Error joining room:', errorText);
         return null;
       }
 
       const data = await response.json();
+      console.log('Joined room:', data);
       
       const room: GameRoom = {
         id: data.room.id,
@@ -110,13 +103,6 @@ class GameService {
         score: data.player.score,
       };
 
-      // Connect to WebSocket and join room
-      const socket = this.initSocket();
-      socket.emit('joinRoom', {
-        roomId: room.id,
-        playerId: player.id,
-      });
-
       return { room, player };
     } catch (error) {
       console.error('Error in joinRoom:', error);
@@ -124,48 +110,8 @@ class GameService {
     }
   }
 
-  // Subscribe to room events via WebSocket
-  subscribeToRoomEvents(callbacks: {
-    onPlayerJoined?: (data: { player: Player; totalPlayers: number }) => void;
-    onPlayerLeft?: (data: { playerId: string; totalPlayers: number }) => void;
-    onGameStarted?: (data: { status: string; round: number; prompt: string }) => void;
-    onRoomState?: (data: { players: Player[]; status: string }) => void;
-    onError?: (error: { message: string }) => void;
-  }) {
-    const socket = this.initSocket();
-
-    if (callbacks.onPlayerJoined) {
-      socket.on('playerJoined', callbacks.onPlayerJoined);
-    }
-    if (callbacks.onPlayerLeft) {
-      socket.on('playerLeft', callbacks.onPlayerLeft);
-    }
-    if (callbacks.onGameStarted) {
-      socket.on('gameStarted', callbacks.onGameStarted);
-    }
-    if (callbacks.onRoomState) {
-      socket.on('roomState', callbacks.onRoomState);
-    }
-    if (callbacks.onError) {
-      socket.on('error', callbacks.onError);
-    }
-
-    return socket;
-  }
-
-  // Start the game (host only)
-  startGame(roomId: string, playerId: string) {
-    const socket = this.initSocket();
-    socket.emit('startGame', { roomId, playerId });
-  }
-
-  // Disconnect from WebSocket
-  disconnect() {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-  }
+  // For now, we'll implement WebSocket functionality later
+  // Focus on getting the basic REST API working first
 }
 
 export const gameService = new GameService();
