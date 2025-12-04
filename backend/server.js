@@ -40,6 +40,64 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Debug endpoint to test Supabase connection
+app.get('/debug/supabase', async (req, res) => {
+  try {
+    // Test simple query
+    const { data: rooms, error: roomError } = await supabase
+      .from('game_rooms')
+      .select('*')
+      .limit(1);
+    
+    if (roomError) {
+      console.error('Supabase query error:', roomError);
+      return res.json({ error: 'Query failed', details: roomError });
+    }
+    
+    // Test insert with minimal data
+    const testCode = 'TEST' + Date.now();
+    const { data: insertData, error: insertError } = await supabase
+      .from('game_rooms')
+      .insert({
+        code: testCode,
+        status: 'waiting',
+        max_players: 8,
+        current_round: 1,
+        max_rounds: 3
+      })
+      .select()
+      .single();
+    
+    if (insertError) {
+      console.error('Supabase insert error:', insertError);
+      return res.json({ 
+        querySuccess: true, 
+        queryData: rooms,
+        insertError: insertError,
+        message: 'Query works but insert failed'
+      });
+    }
+    
+    // Clean up test data
+    await supabase
+      .from('game_rooms')
+      .delete()
+      .eq('code', testCode);
+    
+    res.json({ 
+      querySuccess: true,
+      insertSuccess: true,
+      queryData: rooms,
+      insertData: insertData,
+      message: 'Supabase connection working'
+    });
+    
+  } catch (error) {
+    console.error('Debug endpoint error:', error);
+    res.json({ error: 'Debug failed', details: error.message });
+  }
+});
+
 // Create a new game room
 app.post('/api/rooms/create', async (req, res) => {
   try {
