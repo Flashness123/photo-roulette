@@ -10,10 +10,13 @@ import {
   Alert,
 } from 'react-native';
 import { gameService } from '../services/gameService';
-
 const {width, height} = Dimensions.get('window');
 
-const WelcomeScreen: React.FC = () => {
+interface WelcomeScreenProps {
+  navigation: any;
+}
+
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,13 +32,22 @@ const WelcomeScreen: React.FC = () => {
       console.log('Creating game for player:', playerName);
       const result = await gameService.createRoom(playerName);
       
-      if (result) {
-        Alert.alert(
-          'Room Created! 🎉', 
-          `Room code: ${result.room.code}\n\nShare this code with other players!`,
-          [{ text: 'OK' }]
-        );
+      if (result && result.room && result.player) {
         console.log('Room created successfully:', result);
+        console.log('Navigating with room:', result.room.code, 'player:', result.player.name);
+        // Navigate to Room screen with a small delay to ensure navigation is ready
+        setTimeout(() => {
+          try {
+            console.log('About to navigate to Room with:', { room: result.room, player: result.player });
+            navigation.navigate('Room', {
+              room: result.room,
+              player: result.player,
+            });
+          } catch (navError) {
+            console.error('Navigation error:', navError);
+            Alert.alert('Error', 'Failed to navigate to room: ' + String(navError));
+          }
+        }, 100);
       } else {
         Alert.alert('Error', 'Failed to create room. Please try again.');
       }
@@ -62,13 +74,22 @@ const WelcomeScreen: React.FC = () => {
       console.log('Joining game:', roomCode, 'as player:', playerName);
       const result = await gameService.joinRoom(roomCode, playerName);
       
-      if (result) {
-        Alert.alert(
-          'Joined Room! 🎉', 
-          `Welcome to room ${result.room.code}!\n\nPlayers: ${result.room.players.length}`,
-          [{ text: 'OK' }]
-        );
+      if (result && result.room && result.player) {
         console.log('Joined room successfully:', result);
+        console.log('Navigating with room:', result.room.code, 'player:', result.player.name);
+        // Navigate to Room screen with a small delay
+        setTimeout(() => {
+          try {
+            console.log('About to navigate to Room with:', { room: result.room, player: result.player });
+            navigation.navigate('Room', {
+              room: result.room,
+              player: result.player,
+            });
+          } catch (navError) {
+            console.error('Navigation error:', navError);
+            Alert.alert('Error', 'Failed to navigate to room: ' + String(navError));
+          }
+        }, 100);
       } else {
         Alert.alert('Error', 'Failed to join room. Please check the code and try again.');
       }
@@ -289,4 +310,3 @@ const styles = StyleSheet.create({
   },
 });
 
-export default WelcomeScreen;

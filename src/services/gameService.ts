@@ -83,11 +83,19 @@ class GameService {
       const data = await response.json();
       console.log('Joined room:', data);
       
+      // Map the players data properly
+      const mappedPlayers: Player[] = data.room.players.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        isHost: p.is_host,
+        score: p.score,
+      }));
+
       const room: GameRoom = {
         id: data.room.id,
         code: data.room.code,
         hostId: data.room.hostId,
-        players: data.room.players,
+        players: mappedPlayers,
         status: data.room.status as GameStatus,
         currentRound: 1,
         maxRounds: 3,

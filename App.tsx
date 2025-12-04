@@ -1,20 +1,27 @@
 import React from 'react';
 import {
-  SafeAreaView,
   StatusBar,
   StyleSheet,
 } from 'react-native';
-import WelcomeScreen from './src/screens/WelcomeScreen';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { WelcomeScreen } from './src/screens/WelcomeScreen';
+import { RoomScreen } from './src/screens/RoomScreen';
+
+const Stack = createNativeStackNavigator();
 
 function App(): React.JSX.Element {
   return (
-    <SafeAreaView style={styles.container}>
+    <NavigationContainer>
       <StatusBar
         barStyle="light-content"
         backgroundColor="#E91E63"
       />
-      <WelcomeScreen />
-    </SafeAreaView>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Welcome" component={WelcomeScreen} />
+        <Stack.Screen name="Room" component={RoomScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
