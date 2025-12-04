@@ -109,20 +109,32 @@ app.post('/api/rooms/create', async (req, res) => {
 
     const roomCode = generateRoomCode();
     
+    console.log('Creating room with code:', roomCode);
+    
+    // First, create a temporary room with a placeholder host_id to get the room_id
+    // We'll use a dummy UUID first, then update it
+    const dummyHostId = '00000000-0000-0000-0000-000000000000';
+    
     // Create room in Supabase
     const { data: roomData, error: roomError } = await supabase
       .from('game_rooms')
       .insert({
         code: roomCode,
+        host_id: dummyHostId,
         status: 'waiting',
+        max_players: 8,
+        current_round: 1,
+        max_rounds: 3
       })
       .select()
       .single();
 
     if (roomError) {
       console.error('Error creating room:', roomError);
-      return res.status(500).json({ error: 'Failed to create room' });
+      return res.status(500).json({ error: 'Failed to create room', details: roomError.message });
     }
+
+    console.log('Room created:', roomData);
 
     // Create host player
     const { data: playerData, error: playerError } = await supabase
@@ -137,14 +149,23 @@ app.post('/api/rooms/create', async (req, res) => {
 
     if (playerError) {
       console.error('Error creating host player:', playerError);
-      return res.status(500).json({ error: 'Failed to create host player' });
+      // Clean up the room if player creation fails
+      await supabase.from('game_rooms').delete().eq('id', roomData.id);
+      return res.status(500).json({ error: 'Failed to create host player', details: playerError.message });
     }
 
-    // Update room with host_id
-    await supabase
+    console.log('Player created:', playerData);
+
+    // Update room with actual host_id
+    const { error: updateError } = await supabase
       .from('game_rooms')
       .update({ host_id: playerData.id })
       .eq('id', roomData.id);
+
+    if (updateError) {
+      console.error('Error updating room with host_id:', updateError);
+      return res.status(500).json({ error: 'Failed to update room', details: updateError.message });
+    }
 
     // Initialize room in memory
     activeRooms.set(roomData.id, {
