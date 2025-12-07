@@ -140,6 +140,49 @@ app.get('/api/rooms/:roomId', async (req, res) => {
   }
 });
 
+// Leave a room (remove player)
+app.post('/api/rooms/:roomId/leave', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { playerId } = req.body;
+
+    if (!playerId) {
+      return res.status(400).json({ error: 'Player ID is required' });
+    }
+
+    // Delete player from room
+    const { error: deleteError } = await supabase
+      .from('players')
+      .delete()
+      .eq('id', playerId)
+      .eq('room_id', roomId);
+
+    if (deleteError) {
+      console.error('Error removing player:', deleteError);
+      return res.status(500).json({ error: 'Failed to remove player' });
+    }
+
+    // Check if room is now empty
+    const { data: remainingPlayers } = await supabase
+      .from('players')
+      .select('*')
+      .eq('room_id', roomId);
+
+    // If room is empty, delete it
+    if (!remainingPlayers || remainingPlayers.length === 0) {
+      await supabase
+        .from('game_rooms')
+        .delete()
+        .eq('id', roomId);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error leaving room:', error);
+    res.status(500).json({ error: 'Failed to leave room' });
+  }
+});
+
 // Create a new game room
 app.post('/api/rooms/create', async (req, res) => {
   try {

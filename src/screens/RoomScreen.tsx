@@ -78,7 +78,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     setRefreshing(false);
   };
 
-  const handleExitRoom = () => {
+  const handleExitRoom = async () => {
     Alert.alert(
       'Exit Room',
       'Are you sure you want to leave the room?',
@@ -87,8 +87,20 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
         {
           text: 'Exit',
           style: 'destructive',
-          onPress: () => {
-            // TODO: Call API to remove player from room
+          onPress: async () => {
+            try {
+              // Call API to remove player from room
+              await fetch(
+                `https://photo-roulette-production-b12d.up.railway.app/api/rooms/${room.id}/leave`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ playerId: currentPlayer.id }),
+                }
+              );
+            } catch (error) {
+              console.error('Error leaving room:', error);
+            }
             navigation.navigate('Welcome');
           },
         },
@@ -97,7 +109,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
   };
 
   const handleChoosePictures = () => {
-    Alert.alert('Coming Soon', 'Photo selection feature will be available soon!');
+    navigation.navigate('PhotoSelection', { room, player: currentPlayer });
   };
 
   return (

@@ -7,6 +7,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { RoomScreen } from './src/screens/RoomScreen';
+import { PhotoSelectionScreen } from './src/screens/PhotoSelectionScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -20,6 +21,7 @@ function App(): React.JSX.Element {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="Room" component={RoomScreen} />
+        <Stack.Screen name="PhotoSelection" component={PhotoSelectionScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
