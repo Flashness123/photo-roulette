@@ -98,6 +98,48 @@ app.get('/debug/supabase', async (req, res) => {
   }
 });
 
+// Get room by ID with all players
+app.get('/api/rooms/:roomId', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    // Get room data
+    const { data: roomData, error: roomError } = await supabase
+      .from('game_rooms')
+      .select('*')
+      .eq('id', roomId)
+      .single();
+
+    if (roomError || !roomData) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    // Get all players in the room
+    const { data: playersData, error: playersError } = await supabase
+      .from('players')
+      .select('*')
+      .eq('room_id', roomId);
+
+    if (playersError) {
+      console.error('Error fetching players:', playersError);
+      return res.status(500).json({ error: 'Failed to fetch players' });
+    }
+
+    res.json({
+      room: {
+        id: roomData.id,
+        code: roomData.code,
+        hostId: roomData.host_id,
+        status: roomData.status,
+        players: playersData || []
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching room:', error);
+    res.status(500).json({ error: 'Failed to fetch room' });
+  }
+});
+
 // Create a new game room
 app.post('/api/rooms/create', async (req, res) => {
   try {
