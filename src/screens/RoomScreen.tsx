@@ -41,17 +41,41 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
   const [room, setRoom] = useState<GameRoom>(initialRoom);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Auto-refresh player list every 3 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchRoomData();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [room.id]);
+
+  const fetchRoomData = async () => {
+    try {
+      const response = await fetch(
+        `https://photo-roulette-production-b12d.up.railway.app/api/rooms/${room.id}`
+      );
+      const data = await response.json();
+      if (data.room) {
+        // Transform snake_case to camelCase
+        const transformedRoom = {
+          ...data.room,
+          players: data.room.players.map((p: any) => ({
+            ...p,
+            isHost: p.is_host,
+          })),
+        };
+        setRoom(transformedRoom);
+      }
+    } catch (error) {
+      console.error('Error fetching room data:', error);
+    }
+  };
+
   const refreshRoom = async () => {
     setRefreshing(true);
-    try {
-      // For now, we'll just simulate refreshing
-      // Later we can add a proper refresh API call
-      console.log('Refreshing room data...');
-    } catch (error) {
-      console.error('Error refreshing room:', error);
-    } finally {
-      setRefreshing(false);
-    }
+    await fetchRoomData();
+    setRefreshing(false);
   };
 
   const handleExitRoom = () => {

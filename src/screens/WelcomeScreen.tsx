@@ -18,7 +18,6 @@ interface WelcomeScreenProps {
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
   const [playerName, setPlayerName] = useState('');
-  const [roomCode, setRoomCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleCreateGame = async () => {
@@ -34,20 +33,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
       
       if (result && result.room && result.player) {
         console.log('Room created successfully:', result);
-        console.log('Navigating with room:', result.room.code, 'player:', result.player.name);
-        // Navigate to Room screen with a small delay to ensure navigation is ready
-        setTimeout(() => {
-          try {
-            console.log('About to navigate to Room with:', { room: result.room, player: result.player });
-            navigation.navigate('Room', {
-              room: result.room,
-              player: result.player,
-            });
-          } catch (navError) {
-            console.error('Navigation error:', navError);
-            Alert.alert('Error', 'Failed to navigate to room: ' + String(navError));
-          }
-        }, 100);
+        navigation.navigate('Room', {
+          room: result.room,
+          player: result.player,
+        });
       } else {
         Alert.alert('Error', 'Failed to create room. Please try again.');
       }
@@ -59,16 +48,39 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleJoinGame = async () => {
+  const handleJoinGamePress = () => {
     if (!playerName.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return;
     }
-    if (!roomCode.trim() || roomCode.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit room code');
-      return;
-    }
-    
+
+    // Show prompt to enter room code
+    Alert.prompt(
+      'Join Game',
+      'Enter the 6-digit room code',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Join',
+          onPress: async (roomCode) => {
+            if (!roomCode || roomCode.trim().length !== 6) {
+              Alert.alert('Error', 'Please enter a valid 6-digit room code');
+              return;
+            }
+            await handleJoinGame(roomCode.trim());
+          },
+        },
+      ],
+      'plain-text',
+      '',
+      'number-pad'
+    );
+  };
+
+  const handleJoinGame = async (roomCode: string) => {
     setIsLoading(true);
     try {
       console.log('Joining game:', roomCode, 'as player:', playerName);
@@ -76,20 +88,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
       
       if (result && result.room && result.player) {
         console.log('Joined room successfully:', result);
-        console.log('Navigating with room:', result.room.code, 'player:', result.player.name);
-        // Navigate to Room screen with a small delay
-        setTimeout(() => {
-          try {
-            console.log('About to navigate to Room with:', { room: result.room, player: result.player });
-            navigation.navigate('Room', {
-              room: result.room,
-              player: result.player,
-            });
-          } catch (navError) {
-            console.error('Navigation error:', navError);
-            Alert.alert('Error', 'Failed to navigate to room: ' + String(navError));
-          }
-        }, 100);
+        navigation.navigate('Room', {
+          room: result.room,
+          player: result.player,
+        });
       } else {
         Alert.alert('Error', 'Failed to join room. Please check the code and try again.');
       }
@@ -136,31 +138,19 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           disabled={isLoading}
         >
           <Text style={styles.buttonText}>
-            {isLoading ? 'Creating...' : 'Create game'}
+            {isLoading ? 'Creating...' : 'Create Game'}
           </Text>
         </TouchableOpacity>
 
-        {/* Join Game Section */}
-        <View style={styles.joinSection}>
-          <TextInput
-            style={styles.codeInput}
-            value={roomCode}
-            onChangeText={setRoomCode}
-            placeholder="6-digit code"
-            placeholderTextColor="#FFB6C1"
-            maxLength={6}
-            keyboardType="number-pad"
-          />
-          <TouchableOpacity
-            style={[styles.button, styles.joinButton, isLoading && styles.disabledButton]}
-            onPress={handleJoinGame}
-            disabled={isLoading}
-          >
-            <Text style={styles.buttonText}>
-              {isLoading ? 'Joining...' : 'Join game'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.button, styles.joinButton, isLoading && styles.disabledButton]}
+          onPress={handleJoinGamePress}
+          disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>
+            {isLoading ? 'Joining...' : 'Join Game'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Bottom Icons */}
