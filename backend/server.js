@@ -140,6 +140,37 @@ app.get('/api/rooms/:roomId', async (req, res) => {
   }
 });
 
+// Lock in photos for a player
+app.post('/api/rooms/:roomId/lock-photos', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { playerId, photoCount } = req.body;
+
+    if (!playerId) {
+      return res.status(400).json({ error: 'Player ID is required' });
+    }
+
+    // Update player to mark photos as locked
+    const { data: updatedPlayer, error: updateError } = await supabase
+      .from('players')
+      .update({ photos_locked: true })
+      .eq('id', playerId)
+      .eq('room_id', roomId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating player photos:', updateError);
+      return res.status(500).json({ error: 'Failed to lock photos' });
+    }
+
+    res.json({ success: true, player: updatedPlayer });
+  } catch (error) {
+    console.error('Error locking photos:', error);
+    res.status(500).json({ error: 'Failed to lock photos' });
+  }
+});
+
 // Leave a room (remove player)
 app.post('/api/rooms/:roomId/leave', async (req, res) => {
   try {
