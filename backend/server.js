@@ -98,6 +98,59 @@ app.get('/debug/supabase', async (req, res) => {
   }
 });
 
+// Debug endpoint to add fake player to a room
+app.post('/debug/add-fake-player', async (req, res) => {
+  try {
+    const { roomId, playerName = 'Bot Player' } = req.body;
+
+    if (!roomId) {
+      return res.status(400).json({ error: 'Room ID is required' });
+    }
+
+    // Check if room exists
+    const { data: roomData, error: roomError } = await supabase
+      .from('game_rooms')
+      .select('*')
+      .eq('id', roomId)
+      .single();
+
+    if (roomError || !roomData) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    // Create fake player
+    const { data: playerData, error: playerError } = await supabase
+      .from('players')
+      .insert({
+        room_id: roomId,
+        name: playerName,
+        is_host: false,
+        score: 0,
+        photos_locked: false
+      })
+      .select()
+      .single();
+
+    if (playerError) {
+      console.error('Error creating fake player:', playerError);
+      return res.status(500).json({ 
+        error: 'Failed to create fake player', 
+        details: playerError.message,
+        hint: 'The photos_locked column might not exist. Please add it manually in Supabase.'
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      player: playerData,
+      message: 'Fake player added successfully'
+    });
+  } catch (error) {
+    console.error('Error adding fake player:', error);
+    res.status(500).json({ error: 'Failed to add fake player' });
+  }
+});
+
 // Get room by ID with all players
 app.get('/api/rooms/:roomId', async (req, res) => {
   try {
@@ -150,7 +203,7 @@ app.post('/api/rooms/:roomId/lock-photos', async (req, res) => {
       return res.status(400).json({ error: 'Player ID is required' });
     }
 
-    // Update player to mark photos as locked
+    // Try to update player to mark photos as locked
     const { data: updatedPlayer, error: updateError } = await supabase
       .from('players')
       .update({ photos_locked: true })
@@ -161,6 +214,16 @@ app.post('/api/rooms/:roomId/lock-photos', async (req, res) => {
 
     if (updateError) {
       console.error('Error updating player photos:', updateError);
+      
+      // Check if error is due to missing column
+      if (updateError.message && updateError.message.includes('column') && updateError.message.includes('photos_locked')) {
+        return res.status(500).json({ 
+          error: 'Database column missing',
+          hint: 'Please add photos_locked column to players table in Supabase Dashboard',
+          sql: 'ALTER TABLE players ADD COLUMN photos_locked BOOLEAN DEFAULT false;'
+        });
+      }
+      
       return res.status(500).json({ error: 'Failed to lock photos' });
     }
 
