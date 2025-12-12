@@ -8,9 +8,10 @@ import {
   FlatList,
   Image,
   Dimensions,
-  ActivityIndicator,
   PermissionsAndroid,
   Platform,
+  ImageBackground,
+  StatusBar,
 } from 'react-native';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import ImageLabeling from '@react-native-ml-kit/image-labeling';
@@ -27,20 +28,34 @@ interface PhotoAsset {
   personConfidence?: number;
 }
 
-const { width } = Dimensions.get('window');
-const PHOTO_SIZE = (width - 60) / 4; // 4 columns with padding
+const { width, height } = Dimensions.get('window');
+const backgroundImage = require('../assets/friends2.jpg');
+
+// Calculate columns and photo size based on required photos
+const getGridLayout = (requiredPhotos: number) => {
+  // 16 photos = 4x4, 25 photos = 5x5, 36 photos = 6x6
+  if (requiredPhotos >= 36) return { columns: 6, rows: 6 };
+  if (requiredPhotos >= 25) return { columns: 5, rows: 5 };
+  return { columns: 4, rows: 4 };
+};
 
 export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
   route,
   navigation,
 }) => {
-  // Get required photos from route params (defaults: 16 photos, based on round count)
   const { numRounds = 20, requiredPhotos = 16 } = route.params || {};
+  
+  // Calculate grid layout
+  const gridLayout = getGridLayout(requiredPhotos);
+  const GRID_PADDING = 16;
+  const PHOTO_SPACING = 6;
+  const TOTAL_SPACING = GRID_PADDING * 2 + PHOTO_SPACING * (gridLayout.columns - 1);
+  const PHOTO_SIZE = (width - TOTAL_SPACING - 16) / gridLayout.columns;
   
   const [selectedPhotos, setSelectedPhotos] = useState<PhotoAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('Loading random photos...');
-  const [loadingProgress, setLoadingProgress] = useState(0); // 0-100
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [hasPermission, setHasPermission] = useState(false);
   const [allPhotosCache, setAllPhotosCache] = useState<PhotoAsset[]>([]);
 
@@ -55,7 +70,7 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
           PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
           {
             title: 'Photo Gallery Permission',
-            message: 'Photo Roulette needs access to your photos to select 16 random images for the game.',
+            message: 'Pic Roulette needs access to your photos to select random images for the game.',
             buttonNeutral: 'Ask Me Later',
             buttonNegative: 'Cancel',
             buttonPositive: 'OK',
@@ -77,7 +92,6 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
         Alert.alert('Error', 'Failed to request permission');
       }
     } else {
-      // iOS doesn't need explicit runtime permission for read access
       setHasPermission(true);
       loadRandomPhotos();
     }
@@ -87,9 +101,8 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
     setLoading(true);
     setLoadingMessage('Loading random photos...');
     try {
-      // Get all photos from camera roll
       const photos = await CameraRoll.getPhotos({
-        first: 1000, // Load up to 1000 photos
+        first: 1000,
         assetType: 'Photos',
       });
 
@@ -104,10 +117,8 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
         return;
       }
 
-      // Cache all photos for face detection later
       setAllPhotosCache(allPhotos);
 
-      // Randomly select required number of photos based on round count
       const shuffled = [...allPhotos].sort(() => Math.random() - 0.5);
       const selected = shuffled.slice(0, Math.min(requiredPhotos, allPhotos.length));
       
@@ -120,13 +131,10 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
     }
   };
 
-  // Detect people in a photo using ML Kit Image Labeling
-  // This detects "Person", "People", "Human", "Man", "Woman", "Child", etc.
   const detectPeopleInPhoto = async (uri: string): Promise<{ hasPeople: boolean; confidence: number }> => {
     try {
       const labels = await ImageLabeling.label(uri);
       
-      // Look for person-related labels
       const personLabels = ['Person', 'People', 'Human', 'Man', 'Woman', 'Boy', 'Girl', 
                            'Child', 'Crowd', 'Portrait', 'Selfie', 'Face', 'Smile',
                            'Human body', 'Human face', 'Human head'];
@@ -151,7 +159,6 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
     }
   };
 
-  // Load photos prioritizing those with people
   const loadPhotosWithPeople = async () => {
     setLoading(true);
     setLoadingProgress(0);
@@ -160,10 +167,9 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
     try {
       let photosToScan = allPhotosCache;
       
-      // If cache is empty, load photos first
       if (photosToScan.length === 0) {
         const photos = await CameraRoll.getPhotos({
-          first: 500, // Load up to 500 photos to sample from
+          first: 500,
           assetType: 'Photos',
         });
         
@@ -181,18 +187,15 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
         return;
       }
 
-      // Randomly select 200 photos from the gallery to scan
       const shuffled = [...photosToScan].sort(() => Math.random() - 0.5);
       const maxToScan = 200;
       const photosToCheck = shuffled.slice(0, Math.min(maxToScan, shuffled.length));
       const photosWithPeople: PhotoAsset[] = [];
       const photosWithoutPeople: PhotoAsset[] = [];
       
-      // Scan until we find enough photos with people OR we've checked all 200
       for (let i = 0; i < photosToCheck.length; i++) {
         const photo = photosToCheck[i];
         
-        // Update progress based on how many we've scanned
         const progress = Math.round(((i + 1) / photosToCheck.length) * 100);
         setLoadingProgress(progress);
         setLoadingMessage(`Found ${photosWithPeople.length}/${requiredPhotos} • Scanning ${i + 1}/${photosToCheck.length}`);
@@ -202,7 +205,6 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
         if (result.hasPeople) {
           photosWithPeople.push({ ...photo, hasPeople: true, personConfidence: result.confidence });
           
-          // Stop scanning once we have enough photos with people
           if (photosWithPeople.length >= requiredPhotos) {
             setLoadingProgress(100);
             setLoadingMessage(`Found ${requiredPhotos} photos with people!`);
@@ -213,16 +215,13 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
         }
       }
 
-      // Combine: prioritize photos with people, fill remaining with others
       let selected: PhotoAsset[] = [];
       
       if (photosWithPeople.length >= requiredPhotos) {
-        // Sort by confidence (higher confidence = clearer person detection)
         selected = photosWithPeople
           .sort((a, b) => (b.personConfidence || 0) - (a.personConfidence || 0))
           .slice(0, requiredPhotos);
       } else {
-        // Use all photos with people + fill with random others
         selected = [
           ...photosWithPeople,
           ...photosWithoutPeople.slice(0, requiredPhotos - photosWithPeople.length),
@@ -233,7 +232,7 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
       
       const peoplePhotoCount = selected.filter(p => p.hasPeople).length;
       Alert.alert(
-        'Scan Complete',
+        '✅ Scan Complete',
         `Found ${peoplePhotoCount} photos with people out of ${requiredPhotos} selected.`
       );
       
@@ -259,7 +258,6 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
     try {
       const { room, player, numRounds } = route.params;
       
-      // Call API to lock photos
       const response = await fetch(
         `https://photo-roulette-production-b12d.up.railway.app/api/rooms/${room.id}/lock-photos`,
         {
@@ -273,7 +271,6 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
       );
 
       if (response.ok) {
-        // Navigate directly without alert
         navigation.navigate('Room', {
           room,
           player,
@@ -289,133 +286,323 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
     }
   };
 
-  const renderPhoto = ({ item }: { item: PhotoAsset }) => (
-    <View style={styles.photoContainer}>
-      <Image source={{ uri: item.uri }} style={styles.photo} />
+  const renderPhoto = ({ item, index }: { item: PhotoAsset; index: number }) => (
+    <View style={[styles.photoContainer, { width: PHOTO_SIZE + PHOTO_SPACING, height: PHOTO_SIZE + PHOTO_SPACING }]}>
+      <Image source={{ uri: item.uri }} style={[styles.photo, { width: PHOTO_SIZE, height: PHOTO_SIZE }]} />
+      {item.hasPeople && (
+        <View style={styles.personBadge}>
+          <Text style={styles.personBadgeText}>👤</Text>
+        </View>
+      )}
     </View>
   );
 
   if (!hasPermission && !loading) {
     return (
-      <View style={styles.container}>
+      <ImageBackground
+        source={backgroundImage}
+        style={styles.container}
+        blurRadius={8}
+      >
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+        <View style={styles.overlay} />
         <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText}>📷</Text>
-          <Text style={styles.permissionTitle}>Gallery Permission Needed</Text>
+          <Text style={styles.permissionIcon}>📷</Text>
+          <Text style={styles.permissionTitle}>Gallery Access Needed</Text>
           <Text style={styles.permissionSubtext}>
-            We need access to your photos to select 16 random images.
+            We need access to your photos to select images for the game.
           </Text>
           <TouchableOpacity
-            style={styles.confirmButton}
+            style={styles.permissionButton}
             onPress={requestPermission}
           >
-            <Text style={styles.confirmButtonText}>Grant Permission</Text>
+            <Text style={styles.permissionButtonText}>🔓  Grant Permission</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ImageBackground>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Your {requiredPhotos} Photos</Text>
-        <TouchableOpacity onPress={loadRandomPhotos}>
-          <Text style={styles.shuffleButton}>🔄</Text>
-        </TouchableOpacity>
-      </View>
+    <ImageBackground
+      source={backgroundImage}
+      style={styles.container}
+      blurRadius={8}
+    >
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <View style={styles.overlay} />
+      
+      <View style={styles.content}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerLabel}>Select Your</Text>
+            <Text style={styles.headerTitle}>{requiredPhotos} Photos</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.shuffleButton}
+            onPress={loadRandomPhotos}
+          >
+            <Text style={styles.shuffleButtonText}>🔄</Text>
+          </TouchableOpacity>
+        </View>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <View style={styles.loadingCard}>
-            <Text style={styles.loadingEmoji}>🔍</Text>
-            <Text style={styles.loadingTitle}>Scanning Photos</Text>
-            <Text style={styles.loadingText}>{loadingMessage}</Text>
-            
-            {/* Nice Progress Bar */}
-            <View style={styles.progressBarContainer}>
-              <View style={styles.progressBarBackground}>
-                <View style={[styles.progressBarFill, { width: `${loadingProgress}%` }]} />
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <View style={styles.loadingCard}>
+              <Text style={styles.loadingEmoji}>🔍</Text>
+              <Text style={styles.loadingTitle}>Scanning Photos</Text>
+              <Text style={styles.loadingText}>{loadingMessage}</Text>
+              
+              <View style={styles.progressBarContainer}>
+                <View style={styles.progressBarBackground}>
+                  <View style={[styles.progressBarFill, { width: `${loadingProgress}%` }]} />
+                </View>
+                <Text style={styles.progressText}>{loadingProgress}%</Text>
               </View>
-              <Text style={styles.progressText}>{loadingProgress}%</Text>
             </View>
           </View>
-        </View>
-      ) : (
-        <>
-          <FlatList
-            data={selectedPhotos}
-            renderItem={renderPhoto}
-            keyExtractor={(item, index) => `${item.uri}-${index}`}
-            numColumns={4}
-            contentContainerStyle={styles.photoGrid}
-            ListHeaderComponent={
-              <Text style={styles.gridHeader}>
-                {selectedPhotos.length} of {requiredPhotos} photos selected
+        ) : (
+          <>
+            {/* Photo Count Card */}
+            <View style={styles.photoCountCard}>
+              <Text style={styles.photoCountIcon}>📸</Text>
+              <Text style={styles.photoCountText}>
+                {selectedPhotos.length} of {requiredPhotos} photos ready
               </Text>
-            }
-          />
+              {selectedPhotos.length >= requiredPhotos && (
+                <Text style={styles.photoCountCheck}>✓</Text>
+              )}
+            </View>
 
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.faceDetectionButton}
-              onPress={loadPhotosWithPeople}
-            >
-              <Text style={styles.faceDetectionButtonText}>
-                👤 Prioritize Photos with People
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.confirmButton,
-                selectedPhotos.length < requiredPhotos && styles.confirmButtonDisabled,
-              ]}
-              onPress={handleConfirm}
-              disabled={selectedPhotos.length < requiredPhotos}
-            >
-              <Text style={styles.confirmButtonText}>
-                ✓ Lock In Photos ({selectedPhotos.length}/{requiredPhotos})
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </>
-      )}
-    </View>
+            {/* Photo Grid */}
+            <View style={styles.gridContainer}>
+              <FlatList
+                data={selectedPhotos}
+                renderItem={renderPhoto}
+                keyExtractor={(item, index) => `${item.uri}-${index}`}
+                numColumns={gridLayout.columns}
+                key={`grid-${gridLayout.columns}`}
+                contentContainerStyle={[styles.photoGrid, { alignItems: 'center' }]}
+                showsVerticalScrollIndicator={false}
+              />
+            </View>
+
+            {/* Footer Actions */}
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={styles.peopleButton}
+                onPress={loadPhotosWithPeople}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.peopleButtonText}>👤  Prioritize Photos with People</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  selectedPhotos.length < requiredPhotos && styles.confirmButtonDisabled,
+                ]}
+                onPress={handleConfirm}
+                disabled={selectedPhotos.length < requiredPhotos}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmButtonText}>
+                  ✓  Lock In Photos ({selectedPhotos.length}/{requiredPhotos})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    width: '100%',
+    height: '100%',
   },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  content: {
+    flex: 1,
+    paddingTop: StatusBar.currentHeight || 44,
+  },
+  
+  // Header
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 16,
   },
   backButton: {
-    fontSize: 16,
-    color: '#E91E63',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 24,
     fontWeight: '600',
   },
-  shuffleButton: {
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerLabel: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '500',
+  },
+  headerTitle: {
     fontSize: 24,
-  },
-  title: {
-    fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#fff',
   },
+  shuffleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shuffleButtonText: {
+    fontSize: 22,
+  },
+  
+  // Photo Count Card
+  photoCountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  photoCountIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  photoCountText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  photoCountCheck: {
+    marginLeft: 10,
+    fontSize: 18,
+    color: '#4CAF50',
+    fontWeight: 'bold',
+  },
+  
+  // Grid Container
+  gridContainer: {
+    flexGrow: 0,
+    flexShrink: 1,
+    marginHorizontal: 8,
+    marginBottom: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    overflow: 'hidden',
+  },
+  photoGrid: {
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoContainer: {
+    padding: 3,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photo: {
+    borderRadius: 10,
+    borderRadius: 10,
+  },
+  personBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(76, 175, 80, 0.9)',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  personBadgeText: {
+    fontSize: 12,
+  },
+  
+  // Footer
+  footer: {
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+    paddingTop: 12,
+    gap: 10,
+  },
+  peopleButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  peopleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  confirmButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  confirmButtonDisabled: {
+    backgroundColor: 'rgba(150, 150, 150, 0.6)',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  
+  // Loading
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -423,32 +610,32 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   loadingCard: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 24,
+    padding: 36,
     alignItems: 'center',
-    width: '100%',
-    maxWidth: 320,
+    width: '90%',
+    maxWidth: 340,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
   },
   loadingEmoji: {
-    fontSize: 48,
-    marginBottom: 16,
+    fontSize: 56,
+    marginBottom: 20,
   },
   loadingTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   loadingText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#666',
-    marginBottom: 24,
+    marginBottom: 28,
     textAlign: 'center',
   },
   progressBarContainer: {
@@ -457,95 +644,62 @@ const styles = StyleSheet.create({
   },
   progressBarBackground: {
     width: '100%',
-    height: 12,
+    height: 14,
     backgroundColor: '#E0E0E0',
-    borderRadius: 6,
+    borderRadius: 7,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#E91E63',
-    borderRadius: 6,
+    borderRadius: 7,
   },
   progressText: {
-    marginTop: 8,
-    fontSize: 16,
+    marginTop: 10,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#E91E63',
   },
+  
+  // Permission
   permissionContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
   },
-  permissionText: {
-    fontSize: 64,
-    marginBottom: 20,
+  permissionIcon: {
+    fontSize: 72,
+    marginBottom: 24,
   },
   permissionTitle: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#fff',
     marginBottom: 12,
+    textAlign: 'center',
   },
   permissionSubtext: {
     fontSize: 16,
-    color: '#666',
+    color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: 36,
+    lineHeight: 24,
   },
-  photoGrid: {
-    padding: 10,
-  },
-  gridHeader: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  photoContainer: {
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE,
-    padding: 5,
-  },
-  photo: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 8,
-  },
-  footer: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-  },
-  faceDetectionButton: {
-    backgroundColor: '#2196F3',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  faceDetectionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  confirmButton: {
-    backgroundColor: '#4CAF50',
+  permissionButton: {
+    backgroundColor: '#E91E63',
+    paddingHorizontal: 36,
     paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
+    borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  confirmButtonDisabled: {
-    backgroundColor: '#CCC',
-    opacity: 0.6,
-  },
-  confirmButtonText: {
+  permissionButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '700',
   },
 });

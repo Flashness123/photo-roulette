@@ -1,18 +1,25 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Dimensions,
-  Animated,
   ScrollView,
-  Platform,
   Image,
+  Animated,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import RNFS from 'react-native-fs';
 import { GameRoom, Player } from '../types/game';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Mosaic Pixelated Photo Component
 // Uses WebView canvas for TRUE mosaic pixelation (uniform color blocks)
@@ -296,9 +303,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
   const [pixelLevel, setPixelLevel] = useState(4); // 3 phases: 4=most pixelated, 2=medium, 0=clear
   const [roundStartTime, setRoundStartTime] = useState(Date.now());
   const [hasGuessed, setHasGuessed] = useState(false);
+  const [guessedPlayerId, setGuessedPlayerId] = useState<string | null>(null); // Track which player was guessed
   const [showResults, setShowResults] = useState(false);
   const [roundResults, setRoundResults] = useState<GuessResult[]>([]);
   const [scores, setScores] = useState<{ [playerId: string]: number }>({});
+  const [previousScores, setPreviousScores] = useState<{ [playerId: string]: number }>({}); // For animation
   const [timeLeft, setTimeLeft] = useState(6); // 6 seconds per round
   
   const roundTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -311,6 +320,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       initialScores[p.id] = 0;
     });
     setScores(initialScores);
+    setPreviousScores(initialScores);
   }, []);
 
   // 3 phases over 6 seconds: blocksize 4 (2s) → 2 (2s) → 1 (2s)
@@ -319,6 +329,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       setPixelLevel(4);
       setTimeLeft(6);
       setRoundStartTime(Date.now());
+      setGuessedPlayerId(null); // Reset guessed player for new round
 
       // Phase transitions: 4 → 2 → 0 every 2 seconds
       const pixelInterval = setInterval(() => {
@@ -395,7 +406,14 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
     };
 
     setHasGuessed(true);
+    setGuessedPlayerId(guessedPlayer.id); // Mark which player was selected
     setRoundResults([result]); // In multiplayer, this would collect all players' results
+    
+    // Save previous scores for animation comparison
+    setPreviousScores({ ...scores });
+    
+    // Trigger layout animation for score changes
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     
     // Update scores
     setScores(prev => ({
@@ -415,6 +433,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       setCurrentRound(currentRound + 1);
       setPixelLevel(4);
       setHasGuessed(false);
+      setGuessedPlayerId(null);
       setShowResults(false);
       setRoundStartTime(Date.now());
       setRoundResults([]);
@@ -430,7 +449,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
     if (showResults) {
       resultTimerRef.current = setTimeout(() => {
         handleNextRound();
-      }, 8000);
+      }, 6000); // Changed from 8s to 6s
 
       return () => {
         if (resultTimerRef.current) {
@@ -447,6 +466,17 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
     };
   }, []);
+
+  // Helper to get rank change indicator
+  const getRankChange = (playerId: string): 'up' | 'down' | 'same' => {
+    const currentSorted = Object.entries(scores).sort(([, a], [, b]) => b - a);
+    const previousSorted = Object.entries(previousScores).sort(([, a], [, b]) => b - a);
+    const currentRank = currentSorted.findIndex(([id]) => id === playerId);
+    const previousRank = previousSorted.findIndex(([id]) => id === playerId);
+    if (currentRank < previousRank) return 'up';
+    if (currentRank > previousRank) return 'down';
+    return 'same';
+  };
 
   if (currentRound >= allPhotos.length) {
     return (
@@ -497,13 +527,29 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
             <Text style={styles.scoresTitle}>Current Scores</Text>
             {Object.entries(scores)
               .sort(([, a], [, b]) => b - a)
-              .map(([playerId, score]) => {
+              .map(([playerId, score], index) => {
                 const p = room.players.find((pl: Player) => pl.id === playerId);
+                const rankChange = getRankChange(playerId);
+                const playerResult = roundResults.find(r => r.playerId === playerId);
                 return (
-                  <View key={playerId} style={styles.scoreItem}>
-                    <Text style={styles.scoreName}>{p?.name}</Text>
-                    <Text style={styles.scorePoints}>{score} pts</Text>
-                  </View>
+                  <Animated.View key={playerId} style={[
+                    styles.scoreItem,
+                    rankChange === 'up' && styles.scoreItemUp,
+                  ]}>
+                    <View style={styles.scoreRankContainer}>
+                      {rankChange === 'up' && <Text style={styles.rankUpIcon}>⬆️</Text>}
+                      {rankChange === 'down' && <Text style={styles.rankDownIcon}>⬇️</Text>}
+                      <Text style={styles.scoreName}>{p?.name}</Text>
+                    </View>
+                    <View style={styles.scoreDetails}>
+                      {playerResult && (
+                        <Text style={styles.responseTime}>
+                          ⏱️ {(playerResult.timeMs / 1000).toFixed(1)}s
+                        </Text>
+                      )}
+                      <Text style={styles.scorePoints}>{score} pts</Text>
+                    </View>
+                  </Animated.View>
                 );
               })}
           </View>
@@ -513,7 +559,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
             onPress={handleNextRound}
           >
             <Text style={styles.nextButtonText}>
-              {currentRound + 1 < allPhotos.length ? 'Next Round → (Auto in 8s)' : 'Final Results → (Auto in 8s)'}
+              {currentRound + 1 < allPhotos.length ? 'Next Round → (Auto in 6s)' : 'Final Results → (Auto in 6s)'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -552,19 +598,33 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       <View style={styles.guessSection}>
         <Text style={styles.guessTitle}>Whose photo is this?</Text>
         <ScrollView style={styles.playersList}>
-          {room.players.map((p: Player) => (
-            <TouchableOpacity
-              key={p.id}
-              style={[
-                styles.playerButton,
-                hasGuessed && styles.playerButtonDisabled,
-              ]}
-              onPress={() => handleGuess(p)}
-              disabled={hasGuessed}
-            >
-              <Text style={styles.playerButtonText}>{p.name}</Text>
-            </TouchableOpacity>
-          ))}
+          {room.players.map((p: Player) => {
+            const isSelected = guessedPlayerId === p.id;
+            const isOtherWhenGuessed = hasGuessed && !isSelected;
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={[
+                  styles.playerButton,
+                  isSelected && styles.playerButtonSelected,
+                  isOtherWhenGuessed && styles.playerButtonDisabled,
+                ]}
+                onPress={() => handleGuess(p)}
+                disabled={hasGuessed}
+              >
+                <View style={styles.playerButtonContent}>
+                  {isSelected && <Text style={styles.selectedIcon}>✓</Text>}
+                  <Text style={[
+                    styles.playerButtonText,
+                    isSelected && styles.playerButtonTextSelected,
+                  ]}>{p.name}</Text>
+                </View>
+                {isSelected && (
+                  <Text style={styles.selectedLabel}>YOUR GUESS</Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
     </View>
@@ -622,28 +682,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E91E63',
     borderRadius: 4,
   },
-  photoWrapper: {
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#333',
-  },
-  photo: {
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE,
-  },
-  pixelOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE,
-  },
-  pixelBlock: {
-    position: 'absolute',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
   guessSection: {
     flex: 1,
     backgroundColor: '#2a2a2a',
@@ -671,14 +709,48 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#4a4a4a',
   },
+  playerButtonSelected: {
+    backgroundColor: '#E91E63',
+    borderColor: '#FF4081',
+    borderWidth: 3,
+    shadowColor: '#E91E63',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   playerButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
+    backgroundColor: '#2a2a2a',
+  },
+  playerButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedIcon: {
+    fontSize: 22,
+    color: '#fff',
+    fontWeight: 'bold',
+    marginRight: 10,
   },
   playerButtonText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
     textAlign: 'center',
+  },
+  playerButtonTextSelected: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  selectedLabel: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 6,
+    letterSpacing: 1,
   },
   resultsContainer: {
     flex: 1,
@@ -756,11 +828,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  scoreItemUp: {
+    backgroundColor: 'rgba(76, 175, 80, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.5)',
+  },
+  scoreRankContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  rankUpIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  rankDownIcon: {
+    fontSize: 16,
+    marginRight: 8,
   },
   scoreName: {
     fontSize: 16,
     color: '#fff',
+  },
+  scoreDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  responseTime: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   scorePoints: {
     fontSize: 16,

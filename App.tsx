@@ -1,8 +1,5 @@
 import React from 'react';
-import {
-  StatusBar,
-  StyleSheet,
-} from 'react-native';
+import { StatusBar } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
@@ -30,12 +27,5 @@ function App(): React.JSX.Element {
     </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#E91E63',
-  },
-});
 
 export default App;
