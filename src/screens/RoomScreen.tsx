@@ -37,10 +37,21 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     );
   }
   
-  const { room: initialRoom, player: currentPlayer, selectedPhotos: initialPhotos } = params;
+  const { room: initialRoom, player: currentPlayer, selectedPhotos: initialPhotos, numRounds: initialNumRounds } = params;
   const [room, setRoom] = useState<GameRoom>(initialRoom);
   const [refreshing, setRefreshing] = useState(false);
   const [myPhotos, setMyPhotos] = useState<string[]>(initialPhotos || []);
+  const [numRounds, setNumRounds] = useState(initialNumRounds || 20);
+  
+  // Calculate required photos based on number of rounds
+  // 10/20 rounds = 16 photos, 50 rounds = 25 photos, 100 rounds = 36 photos
+  const getRequiredPhotos = (rounds: number): number => {
+    if (rounds >= 100) return 36;
+    if (rounds >= 50) return 25;
+    return 16;
+  };
+  
+  const requiredPhotos = getRequiredPhotos(numRounds);
 
   // Update photos when coming back from photo selection
   useEffect(() => {
@@ -118,7 +129,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
   };
 
   const handleChoosePictures = () => {
-    navigation.navigate('PhotoSelection', { room, player: currentPlayer });
+    navigation.navigate('PhotoSelection', { room, player: currentPlayer, numRounds, requiredPhotos });
   };
 
   const handleAddFakePlayer = async () => {
@@ -136,7 +147,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
       );
 
       if (response.ok) {
-        Alert.alert('Success', 'Fake player added!');
+        // Refresh silently without alert
         await fetchRoomData(); // Refresh to show new player
       } else {
         const error = await response.json();
@@ -150,8 +161,8 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
 
   const handleStartGame = () => {
     // Check if current player has selected photos
-    if (!myPhotos || myPhotos.length === 0) {
-      Alert.alert('Select Photos First', 'Please choose your 16 photos before starting the game.');
+    if (!myPhotos || myPhotos.length < requiredPhotos) {
+      Alert.alert('Select Photos First', `Please choose your ${requiredPhotos} photos before starting the game.`);
       return;
     }
 
@@ -163,13 +174,14 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
       ownerName: currentPlayer.name,
     }));
 
-    // Shuffle photos for random order
-    const shuffled = allPhotos.sort(() => Math.random() - 0.5);
+    // Shuffle photos for random order and limit to number of rounds
+    const shuffled = allPhotos.sort(() => Math.random() - 0.5).slice(0, numRounds);
 
     navigation.navigate('Game', {
       room,
       player: currentPlayer,
       allPhotos: shuffled,
+      numRounds,
     });
   };
 
@@ -241,17 +253,17 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
           <TouchableOpacity
             style={[
               styles.startGameButton,
-              (room.players.length < 2 || !myPhotos || myPhotos.length === 0) && styles.startGameButtonDisabled,
+              (room.players.length < 2 || !myPhotos || myPhotos.length < requiredPhotos) && styles.startGameButtonDisabled,
             ]}
-            disabled={room.players.length < 2 || !myPhotos || myPhotos.length === 0}
+            disabled={room.players.length < 2 || !myPhotos || myPhotos.length < requiredPhotos}
             onPress={handleStartGame}
           >
             <Text style={styles.startGameButtonText}>
               {room.players.length < 2 
                 ? 'Need at least 2 players' 
-                : (!myPhotos || myPhotos.length === 0)
-                ? 'Select photos first'
-                : 'Start Game'}
+                : (!myPhotos || myPhotos.length < requiredPhotos)
+                ? `Select ${requiredPhotos} photos first`
+                : `Start Game (${numRounds} rounds)`}
             </Text>
           </TouchableOpacity>
         )}

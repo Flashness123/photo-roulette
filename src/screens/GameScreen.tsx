@@ -62,15 +62,14 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
     return () => { cancelled = true; };
   }, [uri]);
 
-  // Map pixelLevel to block size
-  // Level 4: blockSize=50 (most pixelated - big mosaic blocks)
-  // Level 3: blockSize=30
-  // Level 2: blockSize=15
-  // Level 1: blockSize=8
-  // Level 0: blockSize=1 (original image - no pixelation)
+  // Map pixelLevel to block size (3 phases: 4 → 2 → 1)
+  // Phase 1 (0-2s): blockSize=4 (pixelLevel=4)
+  // Phase 2 (2-4s): blockSize=2 (pixelLevel=2)
+  // Phase 3 (4-6s): blockSize=1 (pixelLevel=0) - clear image
   const getBlockSize = (level: number): number => {
-    const blockSizes = [1, 8, 15, 30, 50];
-    return blockSizes[level];
+    if (level >= 4) return 4;
+    if (level >= 2) return 2;
+    return 1;
   };
 
   const blockSize = getBlockSize(pixelLevel);
@@ -118,22 +117,24 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
     <!DOCTYPE html>
     <html>
     <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+      <meta name="viewport" content="width=${size}, height=${size}, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-          background: #1a1a2e; 
-          display: flex; 
-          justify-content: center; 
-          align-items: center;
+        html, body { 
           width: ${size}px;
           height: ${size}px;
           overflow: hidden;
+          background: #1a1a2e;
+        }
+        body { 
+          display: flex; 
+          justify-content: center; 
+          align-items: center;
         }
         canvas { 
           display: block;
-          image-rendering: pixelated;
-          image-rendering: crisp-edges;
+          width: ${size}px;
+          height: ${size}px;
         }
       </style>
     </head>
@@ -228,6 +229,7 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
           opacity: imageLoaded ? 1 : 0,
         }}
         scrollEnabled={false}
+        scalesPageToFit={false}
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
         onMessage={(event) => {
@@ -291,13 +293,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
   const { room, player, allPhotos } = route.params;
   
   const [currentRound, setCurrentRound] = useState(0);
-  const [pixelLevel, setPixelLevel] = useState(4); // 4 levels: 4=most pixelated, 0=clear
+  const [pixelLevel, setPixelLevel] = useState(4); // 3 phases: 4=most pixelated, 2=medium, 0=clear
   const [roundStartTime, setRoundStartTime] = useState(Date.now());
   const [hasGuessed, setHasGuessed] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [roundResults, setRoundResults] = useState<GuessResult[]>([]);
   const [scores, setScores] = useState<{ [playerId: string]: number }>({});
-  const [timeLeft, setTimeLeft] = useState(10);
+  const [timeLeft, setTimeLeft] = useState(6); // 6 seconds per round
   
   const roundTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resultTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -311,17 +313,21 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
     setScores(initialScores);
   }, []);
 
-  // Gradually decrease pixelation over time - 4 levels over 10 seconds
+  // 3 phases over 6 seconds: blocksize 4 (2s) → 2 (2s) → 1 (2s)
   useEffect(() => {
     if (!showResults && currentRound < allPhotos.length) {
       setPixelLevel(4);
-      setTimeLeft(10);
+      setTimeLeft(6);
       setRoundStartTime(Date.now());
 
-      // Decrease pixelation level every 2.5 seconds (4 levels over 10 seconds)
+      // Phase transitions: 4 → 2 → 0 every 2 seconds
       const pixelInterval = setInterval(() => {
-        setPixelLevel(prev => Math.max(0, prev - 1));
-      }, 2500);
+        setPixelLevel(prev => {
+          if (prev >= 4) return 2;
+          if (prev >= 2) return 0;
+          return 0;
+        });
+      }, 2000);
 
       // Update countdown timer
       const timerInterval = setInterval(() => {
@@ -352,7 +358,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       playerName: player.name,
       guessedPlayerId: '',
       isCorrect: false,
-      timeMs: 10000,
+      timeMs: 6000,
       points: 0,
     };
 
@@ -412,7 +418,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       setShowResults(false);
       setRoundStartTime(Date.now());
       setRoundResults([]);
-      setTimeLeft(10);
+      setTimeLeft(6);
     } else {
       // Game finished - show final results
       navigation.replace('FinalResults', { room, player, scores, allPhotos });
@@ -523,20 +529,24 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
         <Text style={styles.scoreText}>Score: {scores[player.id] || 0}</Text>
       </View>
 
+      {/* Time Progress Bar at the top */}
+      <View style={styles.timeProgressContainer}>
+        <View style={styles.timeProgressBackground}>
+          <View
+            style={[
+              styles.timeProgressBar,
+              { width: `${(timeLeft / 6) * 100}%` },
+            ]}
+          />
+        </View>
+      </View>
+
       <View style={styles.photoContainer}>
         <PixelatedPhoto
           uri={currentPhoto.photoUri}
           pixelLevel={pixelLevel}
           size={PHOTO_SIZE}
         />
-        <View style={styles.pixelationIndicator}>
-          <View
-            style={[
-              styles.pixelationBar,
-              { width: `${((5 - pixelLevel) / 5) * 100}%` },
-            ]}
-          />
-        </View>
       </View>
 
       <View style={styles.guessSection}>
@@ -594,7 +604,23 @@ const styles = StyleSheet.create({
   },
   photoContainer: {
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 10,
+  },
+  timeProgressContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  timeProgressBackground: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#333',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  timeProgressBar: {
+    height: '100%',
+    backgroundColor: '#E91E63',
+    borderRadius: 4,
   },
   photoWrapper: {
     width: PHOTO_SIZE,
@@ -617,19 +643,6 @@ const styles = StyleSheet.create({
   pixelBlock: {
     position: 'absolute',
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  pixelationIndicator: {
-    width: PHOTO_SIZE,
-    height: 8,
-    backgroundColor: '#333',
-    borderRadius: 4,
-    marginTop: 16,
-    overflow: 'hidden',
-  },
-  pixelationBar: {
-    height: '100%',
-    backgroundColor: '#E91E63',
-    borderRadius: 4,
   },
   guessSection: {
     flex: 1,
