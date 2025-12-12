@@ -37,9 +37,17 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     );
   }
   
-  const { room: initialRoom, player: currentPlayer } = params;
+  const { room: initialRoom, player: currentPlayer, selectedPhotos: initialPhotos } = params;
   const [room, setRoom] = useState<GameRoom>(initialRoom);
   const [refreshing, setRefreshing] = useState(false);
+  const [myPhotos, setMyPhotos] = useState<string[]>(initialPhotos || []);
+
+  // Update photos when coming back from photo selection
+  useEffect(() => {
+    if (params.selectedPhotos) {
+      setMyPhotos(params.selectedPhotos);
+    }
+  }, [params.selectedPhotos]);
 
   // Auto-refresh player list every 3 seconds
   useEffect(() => {
@@ -63,6 +71,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
           players: data.room.players.map((p: any) => ({
             ...p,
             isHost: p.is_host,
+            photosLocked: p.photos_locked,
           })),
         };
         setRoom(transformedRoom);
@@ -112,6 +121,58 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     navigation.navigate('PhotoSelection', { room, player: currentPlayer });
   };
 
+  const handleAddFakePlayer = async () => {
+    try {
+      const response = await fetch(
+        `https://photo-roulette-production-b12d.up.railway.app/debug/add-fake-player`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            roomId: room.id,
+            playerName: `Bot ${Math.floor(Math.random() * 1000)}`
+          }),
+        }
+      );
+
+      if (response.ok) {
+        Alert.alert('Success', 'Fake player added!');
+        await fetchRoomData(); // Refresh to show new player
+      } else {
+        const error = await response.json();
+        Alert.alert('Error', error.hint || 'Failed to add fake player');
+      }
+    } catch (error) {
+      console.error('Error adding fake player:', error);
+      Alert.alert('Error', 'Failed to add fake player');
+    }
+  };
+
+  const handleStartGame = () => {
+    // Check if current player has selected photos
+    if (!myPhotos || myPhotos.length === 0) {
+      Alert.alert('Select Photos First', 'Please choose your 16 photos before starting the game.');
+      return;
+    }
+
+    // For solo play with bots, we can use just the player's photos
+    // In multiplayer, we'd collect all players' photos
+    const allPhotos = myPhotos.map((uri, index) => ({
+      photoUri: uri,
+      ownerId: currentPlayer.id,
+      ownerName: currentPlayer.name,
+    }));
+
+    // Shuffle photos for random order
+    const shuffled = allPhotos.sort(() => Math.random() - 0.5);
+
+    navigation.navigate('Game', {
+      room,
+      player: currentPlayer,
+      allPhotos: shuffled,
+    });
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -147,6 +208,9 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
                 {player.isHost && (
                   <Text style={styles.hostBadge}>HOST</Text>
                 )}
+                {player.photosLocked && (
+                  <Text style={styles.photosLockedBadge}>✓</Text>
+                )}
               </View>
               <Text style={styles.playerScore}>Score: {player.score}</Text>
             </View>
@@ -163,19 +227,31 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
           <Text style={styles.choosePicturesButtonText}>Choose Pictures</Text>
         </TouchableOpacity>
 
+        {/* Debug: Add Fake Player Button */}
+        {__DEV__ && (
+          <TouchableOpacity
+            style={styles.debugButton}
+            onPress={handleAddFakePlayer}
+          >
+            <Text style={styles.debugButtonText}>🤖 Add Fake Player (Debug)</Text>
+          </TouchableOpacity>
+        )}
+
         {currentPlayer.isHost && (
           <TouchableOpacity
             style={[
               styles.startGameButton,
-              room.players.length < 2 && styles.startGameButtonDisabled,
+              (room.players.length < 2 || !myPhotos || myPhotos.length === 0) && styles.startGameButtonDisabled,
             ]}
-            disabled={room.players.length < 2}
-            onPress={() => {
-              Alert.alert('Coming Soon', 'Game start feature will be available soon!');
-            }}
+            disabled={room.players.length < 2 || !myPhotos || myPhotos.length === 0}
+            onPress={handleStartGame}
           >
             <Text style={styles.startGameButtonText}>
-              {room.players.length < 2 ? 'Need at least 2 players' : 'Start Game'}
+              {room.players.length < 2 
+                ? 'Need at least 2 players' 
+                : (!myPhotos || myPhotos.length === 0)
+                ? 'Select photos first'
+                : 'Start Game'}
             </Text>
           </TouchableOpacity>
         )}
@@ -299,6 +375,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginLeft: 12,
   },
+  photosLockedBadge: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
   playerScore: {
     fontSize: 14,
     color: '#666',
@@ -314,6 +400,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   choosePicturesButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  debugButton: {
+    backgroundColor: '#FF9800',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  debugButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

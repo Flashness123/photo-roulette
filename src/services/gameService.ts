@@ -13,14 +13,20 @@ class GameService {
       console.log('Creating room for:', hostName);
       console.log('Backend URL:', config.backend.url);
       
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const response = await fetch(`${config.backend.url}/api/rooms/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ hostName }),
+        signal: controller.signal,
       });
-
+      
+      clearTimeout(timeoutId);
       console.log('Response status:', response.status);
       
       if (!response.ok) {
@@ -64,14 +70,20 @@ class GameService {
     try {
       console.log('Joining room:', roomCode, 'as:', playerName);
       
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const response = await fetch(`${config.backend.url}/api/rooms/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ roomCode, playerName }),
+        signal: controller.signal,
       });
-
+      
+      clearTimeout(timeoutId);
       console.log('Join response status:', response.status);
 
       if (!response.ok) {

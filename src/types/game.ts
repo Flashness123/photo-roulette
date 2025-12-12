@@ -4,6 +4,7 @@ export interface Player {
   avatar?: string;
   isHost: boolean;
   score: number;
+  photosLocked?: boolean;
 }
 
 export interface Photo {
