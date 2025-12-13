@@ -8,7 +8,10 @@ import {
   ImageBackground,
   StatusBar,
   Dimensions,
+  Switch,
+  Share,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { GameRoom, Player, GameType } from '../types/game';
 import Colors from '../theme/colors';
 
@@ -189,12 +192,39 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
             <Text style={styles.exitButtonText}>✕</Text>
           </TouchableOpacity>
           
-          <View style={styles.roomCodeContainer}>
-            <Text style={styles.roomCodeLabel}>Room Code</Text>
-            <Text style={styles.roomCodeText}>{room.code}</Text>
-          </View>
+          <TouchableOpacity 
+            style={styles.roomCodeContainer}
+            onPress={() => {
+              Clipboard.setString(room.code);
+              Alert.alert('Copied!', 'Room code copied to clipboard');
+            }}
+            onLongPress={() => {
+              Share.share({
+                message: `Join my Photo Roulette game! Room code: ${room.code}`,
+                title: 'Photo Roulette',
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.roomCodeLabel}>Room Code (tap to copy)</Text>
+            <View style={styles.roomCodeRow}>
+              <Text style={styles.roomCodeText}>{room.code}</Text>
+              <Text style={styles.shareIcon}>📋</Text>
+            </View>
+          </TouchableOpacity>
           
-          <View style={styles.headerSpacer} />
+          <TouchableOpacity 
+            style={styles.shareButton}
+            onPress={() => {
+              Share.share({
+                message: `Join my Photo Roulette game! Room code: ${room.code}`,
+                title: 'Photo Roulette',
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.shareButtonText}>↗</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Players Area - Spawn Pattern */}
@@ -261,16 +291,21 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
               </Text>
             </TouchableOpacity>
             
-            {/* Blur Toggle - Small */}
-            {!isVideoMode && (
-              <TouchableOpacity
-                style={[styles.blurToggle, mosaicEnabled && styles.blurToggleActive]}
-                onPress={() => setMosaicEnabled(!mosaicEnabled)}
-              >
-                <Text style={styles.blurToggleText}>Blur</Text>
-              </TouchableOpacity>
-            )}
           </View>
+          
+          {/* Blur Toggle Slider */}
+          {!isVideoMode && (
+            <View style={styles.blurToggleContainer}>
+              <Text style={styles.blurToggleLabel}>Blurry Pictures</Text>
+              <Switch
+                value={mosaicEnabled}
+                onValueChange={setMosaicEnabled}
+                trackColor={{ false: 'rgba(255, 255, 255, 0.3)', true: Colors.purple }}
+                thumbColor={mosaicEnabled ? Colors.pink : Colors.white}
+                ios_backgroundColor="rgba(255, 255, 255, 0.3)"
+              />
+            </View>
+          )}
         </View>
       </View>
     </ImageBackground>
@@ -342,21 +377,42 @@ const styles = StyleSheet.create({
   },
   roomCodeContainer: {
     alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   roomCodeLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textLight,
     fontWeight: '500',
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  roomCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   roomCodeText: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     color: Colors.white,
-    letterSpacing: 6,
+    letterSpacing: 4,
   },
-  headerSpacer: {
+  shareIcon: {
+    fontSize: 16,
+  },
+  shareButton: {
     width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shareButtonText: {
+    color: Colors.white,
+    fontSize: 18,
   },
   
   // Players Area
@@ -459,19 +515,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
-  blurToggle: {
-    width: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 16,
+  blurToggleContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 12,
   },
-  blurToggleActive: {
-    backgroundColor: Colors.purple,
-  },
-  blurToggleText: {
+  blurToggleLabel: {
     color: Colors.white,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
 });

@@ -10,6 +10,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Player } from '../types/game';
+import Colors from '../theme/colors';
 
 interface FinalResultsScreenProps {
   route: any;
@@ -17,13 +18,13 @@ interface FinalResultsScreenProps {
 }
 
 const { width, height } = Dimensions.get('window');
-const backgroundImage = require('../assets/friends2.jpg');
+const backgroundImage = require('../assets/background.png');
 
 export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
   route,
   navigation,
 }) => {
-  const { room, player, scores, allPhotos } = route.params;
+  const { room, player, scores, allPhotos, gameStats } = route.params;
 
   // Sort players by score
   const sortedPlayers = room.players
@@ -39,12 +40,22 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
 
   // Podium positions (1st, 2nd, 3rd)
   const podium = sortedPlayers.slice(0, 3);
+  
+  // Format time in seconds with 1 decimal
+  const formatTime = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+
+  // Handle play again - go back to room screen
+  const handlePlayAgain = () => {
+    // Navigate back to room to start a new game
+    navigation.replace('Room', { room, player });
+  };
 
   return (
     <ImageBackground
       source={backgroundImage}
       style={styles.container}
-      blurRadius={10}
+      resizeMode="cover"
+      blurRadius={20}
     >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <View style={styles.overlay} />
@@ -55,16 +66,12 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
       >
         {/* Trophy Header */}
         <View style={styles.trophyContainer}>
-          <Text style={styles.trophyIcon}>🏆</Text>
           <Text style={styles.title}>Game Over!</Text>
           <Text style={styles.subtitle}>{allPhotos.length} rounds completed</Text>
         </View>
 
         {/* Winner Card */}
         <View style={styles.winnerCard}>
-          <View style={styles.crownContainer}>
-            <Text style={styles.crownEmoji}>👑</Text>
-          </View>
           <Text style={styles.winnerLabel}>WINNER</Text>
           <Text style={styles.winnerName}>{winner.name}</Text>
           <View style={styles.winnerScoreBadge}>
@@ -73,9 +80,50 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
           </View>
         </View>
 
+        {/* Game Stats Card */}
+        {gameStats && (
+          <View style={styles.gameStatsCard}>
+            <Text style={styles.gameStatsTitle}>Game Stats</Text>
+            <View style={styles.gameStatsGrid}>
+              {gameStats.fastestAnswer && (
+                <View style={styles.gameStatItem}>
+                  <Text style={styles.gameStatEmoji}>⚡</Text>
+                  <Text style={styles.gameStatLabel}>Fastest Answer</Text>
+                  <Text style={styles.gameStatValue}>{gameStats.fastestAnswer.playerName}</Text>
+                  <Text style={styles.gameStatDetail}>{formatTime(gameStats.fastestAnswer.timeMs)}</Text>
+                </View>
+              )}
+              {gameStats.longestStreak && gameStats.longestStreak.streak > 0 && (
+                <View style={styles.gameStatItem}>
+                  <Text style={styles.gameStatEmoji}>🔥</Text>
+                  <Text style={styles.gameStatLabel}>Longest Streak</Text>
+                  <Text style={styles.gameStatValue}>{gameStats.longestStreak.playerName}</Text>
+                  <Text style={styles.gameStatDetail}>{gameStats.longestStreak.streak} in a row</Text>
+                </View>
+              )}
+              {gameStats.highestScore && (
+                <View style={styles.gameStatItem}>
+                  <Text style={styles.gameStatEmoji}>🏆</Text>
+                  <Text style={styles.gameStatLabel}>Highest Score</Text>
+                  <Text style={styles.gameStatValue}>{gameStats.highestScore.playerName}</Text>
+                  <Text style={styles.gameStatDetail}>{gameStats.highestScore.score} pts</Text>
+                </View>
+              )}
+              {gameStats.lowestScore && sortedPlayers.length > 1 && (
+                <View style={styles.gameStatItem}>
+                  <Text style={styles.gameStatEmoji}>😅</Text>
+                  <Text style={styles.gameStatLabel}>Lowest Score</Text>
+                  <Text style={styles.gameStatValue}>{gameStats.lowestScore.playerName}</Text>
+                  <Text style={styles.gameStatDetail}>{gameStats.lowestScore.score} pts</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Your Performance Card */}
         <View style={styles.myStatsCard}>
-          <Text style={styles.myStatsTitle}>🎯 Your Performance</Text>
+          <Text style={styles.myStatsTitle}>Your Performance</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statBox}>
               <Text style={styles.statValue}>#{myRank}</Text>
@@ -94,7 +142,7 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
 
         {/* Leaderboard */}
         <View style={styles.leaderboardCard}>
-          <Text style={styles.leaderboardTitle}>📊 Final Leaderboard</Text>
+          <Text style={styles.leaderboardTitle}>Final Leaderboard</Text>
           {sortedPlayers.map((p: any, index: number) => (
             <View
               key={p.id}
@@ -102,13 +150,11 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
                 styles.leaderboardItem,
                 p.id === player.id && styles.leaderboardItemMe,
                 index === 0 && styles.leaderboardFirst,
-                index === 1 && styles.leaderboardSecond,
-                index === 2 && styles.leaderboardThird,
               ]}
             >
               <View style={styles.rankBadge}>
                 <Text style={styles.rankText}>
-                  {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                  #{index + 1}
                 </Text>
               </View>
               <View style={styles.leaderboardInfo}>
@@ -124,11 +170,20 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
 
         {/* Play Again Button */}
         <TouchableOpacity
+          style={styles.playAgainButton}
+          onPress={handlePlayAgain}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.playAgainButtonText}>Play Again</Text>
+        </TouchableOpacity>
+        
+        {/* Back to Home Button */}
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.navigate('Welcome')}
           activeOpacity={0.8}
         >
-          <Text style={styles.backButtonText}>🏠  Back to Home</Text>
+          <Text style={styles.backButtonText}>Back to Home</Text>
         </TouchableOpacity>
         
         <View style={styles.bottomSpacing} />
@@ -145,7 +200,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   scrollContent: {
     padding: 20,
@@ -157,83 +212,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  trophyIcon: {
-    fontSize: 72,
-    marginBottom: 12,
-  },
   title: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    color: Colors.textLight,
     marginTop: 8,
   },
   
   // Winner Card
   winnerCard: {
-    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 2,
-    borderColor: 'rgba(255, 215, 0, 0.5)',
-    padding: 28,
-    borderRadius: 24,
+    borderColor: Colors.cyan,
+    padding: 24,
+    borderRadius: 20,
     alignItems: 'center',
     marginBottom: 20,
   },
-  crownContainer: {
-    marginBottom: 8,
-  },
-  crownEmoji: {
-    fontSize: 48,
-  },
   winnerLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#FFD700',
+    color: Colors.cyan,
     letterSpacing: 3,
     marginBottom: 8,
   },
   winnerName: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
     marginBottom: 12,
   },
   winnerScoreBadge: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    backgroundColor: 'rgba(255, 215, 0, 0.3)',
+    backgroundColor: 'rgba(76, 201, 240, 0.2)',
     paddingVertical: 8,
     paddingHorizontal: 20,
     borderRadius: 20,
   },
   winnerScore: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFD700',
+    color: Colors.cyan,
   },
   winnerScoreLabel: {
-    fontSize: 16,
-    color: '#FFD700',
+    fontSize: 14,
+    color: Colors.cyan,
     marginLeft: 6,
   },
   
   // My Stats Card
   myStatsCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     padding: 20,
     borderRadius: 20,
     marginBottom: 20,
   },
   myStatsTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -252,103 +297,160 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#4CAF50',
+    color: Colors.pink,
   },
   statLabel: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    color: Colors.textLight,
     marginTop: 4,
   },
   
   // Leaderboard
   leaderboardCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     padding: 20,
     borderRadius: 20,
     marginBottom: 24,
   },
   leaderboardTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
     marginBottom: 16,
     textAlign: 'center',
   },
   leaderboardItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   leaderboardItemMe: {
     borderWidth: 2,
-    borderColor: '#E91E63',
-    backgroundColor: 'rgba(233, 30, 99, 0.2)',
+    borderColor: Colors.pink,
+    backgroundColor: 'rgba(247, 37, 133, 0.15)',
   },
   leaderboardFirst: {
-    backgroundColor: 'rgba(255, 215, 0, 0.15)',
-  },
-  leaderboardSecond: {
-    backgroundColor: 'rgba(192, 192, 192, 0.1)',
-  },
-  leaderboardThird: {
-    backgroundColor: 'rgba(205, 127, 50, 0.1)',
+    backgroundColor: 'rgba(76, 201, 240, 0.15)',
+    borderWidth: 1,
+    borderColor: Colors.cyan,
   },
   rankBadge: {
-    width: 44,
+    width: 40,
     alignItems: 'center',
   },
   rankText: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
   },
   leaderboardInfo: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 10,
   },
   leaderboardName: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: Colors.white,
   },
   youLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 'bold',
-    color: '#E91E63',
+    color: Colors.pink,
     marginTop: 2,
   },
   leaderboardScore: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: 'bold',
-    color: '#4CAF50',
-  },
-  
-  // Back Button
-  backButton: {
-    backgroundColor: '#E91E63',
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#E91E63',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: Colors.cyan,
   },
   bottomSpacing: {
     height: 30,
+  },
+  
+  // Game Stats Card
+  gameStatsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 20,
+  },
+  gameStatsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.white,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  gameStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  gameStatItem: {
+    width: '48%',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  gameStatEmoji: {
+    fontSize: 24,
+    marginBottom: 6,
+  },
+  gameStatLabel: {
+    fontSize: 11,
+    color: Colors.textLight,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  gameStatValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: Colors.white,
+    textAlign: 'center',
+  },
+  gameStatDetail: {
+    fontSize: 12,
+    color: Colors.cyan,
+    marginTop: 2,
+  },
+  
+  // Buttons
+  playAgainButton: {
+    backgroundColor: Colors.pink,
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  playAgainButtonText: {
+    color: Colors.white,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  backButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  backButtonText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

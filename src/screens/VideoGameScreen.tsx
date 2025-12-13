@@ -7,9 +7,11 @@ import {
   Dimensions,
   ScrollView,
   Image,
+  ImageBackground,
 } from 'react-native';
 import Video, { VideoRef } from 'react-native-video';
 import { Player } from '../types/game';
+import Colors from '../theme/colors';
 
 interface VideoGameScreenProps {
   route: any;
@@ -32,7 +34,7 @@ interface GuessResult {
 }
 
 const { width, height } = Dimensions.get('window');
-const VIDEO_SIZE = width - 40;
+const VIDEO_SIZE = width; // Full width video
 
 export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigation }) => {
   const { room, player, allPhotos } = route.params || {};
@@ -42,17 +44,21 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
   // Safety check for missing params
   if (!room || !player || !allPhotos || allPhotos.length === 0) {
     return (
-      <View style={styles.container}>
+      <ImageBackground 
+        source={require('../assets/background.png')} 
+        style={styles.container}
+        resizeMode="cover"
+      >
         <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-          <Text style={{color: '#fff', fontSize: 18}}>Missing game data</Text>
+          <Text style={{color: Colors.white, fontSize: 18}}>Missing game data</Text>
           <TouchableOpacity 
-            style={{marginTop: 20, padding: 15, backgroundColor: '#E91E63', borderRadius: 10}}
+            style={{marginTop: 20, padding: 15, backgroundColor: Colors.pink, borderRadius: 10}}
             onPress={() => navigation.navigate('Welcome')}
           >
-            <Text style={{color: '#fff'}}>Go Back</Text>
+            <Text style={{color: Colors.white}}>Go Back</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ImageBackground>
     );
   }
   
@@ -65,6 +71,18 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
   const [scores, setScores] = useState<{ [playerId: string]: number }>({});
   const [previousScores, setPreviousScores] = useState<{ [playerId: string]: number }>({});
   const [timeLeft, setTimeLeft] = useState(6);
+  
+  // Streak and stats tracking
+  const [currentStreak, setCurrentStreak] = useState(0);
+  const [gameStats, setGameStats] = useState<{
+    fastestAnswer: { playerId: string; playerName: string; timeMs: number } | null;
+    longestStreak: { playerId: string; playerName: string; streak: number };
+    allAnswerTimes: { playerId: string; timeMs: number; isCorrect: boolean }[];
+  }>({
+    fastestAnswer: null,
+    longestStreak: { playerId: '', playerName: '', streak: 0 },
+    allAnswerTimes: [],
+  });
   
   const resultTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -115,6 +133,8 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
       points: 0,
     };
 
+    // Timeout breaks streak
+    setCurrentStreak(0);
     setHasGuessed(true);
     setRoundResults([result]);
     
@@ -130,11 +150,53 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
     const currentVideo = allPhotos[currentRound];
     const isCorrect = guessedPlayer.id === currentVideo.ownerId;
     
+    // NEW POINT SYSTEM:
+    // Base: 500 points for correct answer
+    // Speed bonus: Up to 1000 extra points for fast answers (linear decay)
+    // Streak bonus: +200 per consecutive correct answer
     let points = 0;
+    let newStreak = currentStreak;
+    
     if (isCorrect) {
-      const speedBonus = Math.max(0, 500 - Math.floor(timeElapsed / 30));
-      points = 1000 + speedBonus;
+      // Base points
+      const basePoints = 500;
+      
+      // Speed bonus - decays linearly from 1000 to 0 over 6 seconds
+      const speedBonus = Math.max(0, Math.floor(1000 * (1 - timeElapsed / 6000)));
+      
+      // Streak bonus
+      newStreak = currentStreak + 1;
+      const streakBonus = (newStreak - 1) * 200;
+      
+      points = basePoints + speedBonus + streakBonus;
+      
+      // Update fastest answer stat
+      if (!gameStats.fastestAnswer || timeElapsed < gameStats.fastestAnswer.timeMs) {
+        setGameStats(prev => ({
+          ...prev,
+          fastestAnswer: { playerId: player.id, playerName: player.name, timeMs: timeElapsed },
+        }));
+      }
+      
+      // Update longest streak stat
+      if (newStreak > gameStats.longestStreak.streak) {
+        setGameStats(prev => ({
+          ...prev,
+          longestStreak: { playerId: player.id, playerName: player.name, streak: newStreak },
+        }));
+      }
+    } else {
+      // Wrong answer breaks streak
+      newStreak = 0;
     }
+    
+    setCurrentStreak(newStreak);
+    
+    // Track all answer times for stats
+    setGameStats(prev => ({
+      ...prev,
+      allAnswerTimes: [...prev.allAnswerTimes, { playerId: player.id, timeMs: timeElapsed, isCorrect }],
+    }));
 
     const result: GuessResult = {
       playerId: player.id,
@@ -171,7 +233,31 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
       setRoundResults([]);
       setTimeLeft(6);
     } else {
-      navigation.replace('FinalResults', { room, player, scores, allPhotos });
+      // Game finished - show final results with stats
+      navigation.replace('FinalResults', { 
+        room, 
+        player, 
+        scores, 
+        allPhotos,
+        gameStats: {
+          fastestAnswer: gameStats.fastestAnswer,
+          longestStreak: gameStats.longestStreak,
+          highestScore: Object.entries(scores).reduce((best, [id, score]) => {
+            const p = room.players.find((pl: Player) => pl.id === id);
+            if (!best || score > best.score) {
+              return { playerId: id, playerName: p?.name || 'Unknown', score };
+            }
+            return best;
+          }, null as { playerId: string; playerName: string; score: number } | null),
+          lowestScore: Object.entries(scores).reduce((worst, [id, score]) => {
+            const p = room.players.find((pl: Player) => pl.id === id);
+            if (!worst || score < worst.score) {
+              return { playerId: id, playerName: p?.name || 'Unknown', score };
+            }
+            return worst;
+          }, null as { playerId: string; playerName: string; score: number } | null),
+        },
+      });
     }
   };
 
@@ -221,7 +307,11 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
     const myResult = roundResults.find(r => r.playerId === player.id);
     
     return (
-      <View style={styles.container}>
+      <ImageBackground 
+        source={require('../assets/background.png')} 
+        style={styles.container}
+        resizeMode="cover"
+      >
         <View style={styles.resultsContainer}>
           <Text style={styles.resultsTitle}>Round {currentRound + 1} Results</Text>
           
@@ -238,7 +328,7 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
             <View style={styles.myResultCard}>
               {myResult.isCorrect ? (
                 <>
-                  <Text style={styles.correctText}>✓ CORRECT!</Text>
+                  <Text style={styles.correctText}>CORRECT!</Text>
                   <Text style={styles.pointsText}>+{myResult.points} points</Text>
                   <Text style={styles.timeText}>
                     Time: {(myResult.timeMs / 1000).toFixed(2)}s
@@ -246,7 +336,7 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
                 </>
               ) : (
                 <>
-                  <Text style={styles.wrongText}>✗ Wrong</Text>
+                  <Text style={styles.wrongText}>Wrong</Text>
                   <Text style={styles.noPointsText}>0 points</Text>
                 </>
               )}
@@ -267,14 +357,12 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
                     rankChange === 'up' && styles.scoreItemUp,
                   ]}>
                     <View style={styles.scoreRankContainer}>
-                      {rankChange === 'up' && <Text style={styles.rankUpIcon}>⬆️</Text>}
-                      {rankChange === 'down' && <Text style={styles.rankDownIcon}>⬇️</Text>}
                       <Text style={styles.scoreName}>{p?.name}</Text>
                     </View>
                     <View style={styles.scoreDetails}>
                       {playerResult && (
                         <Text style={styles.responseTime}>
-                          ⏱️ {(playerResult.timeMs / 1000).toFixed(1)}s
+                          {(playerResult.timeMs / 1000).toFixed(1)}s
                         </Text>
                       )}
                       <Text style={styles.scorePoints}>{score} pts</Text>
@@ -289,20 +377,26 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
             onPress={handleNextRound}
           >
             <Text style={styles.nextButtonText}>
-              {currentRound + 1 < allPhotos.length ? 'Next Round → (Auto in 6s)' : 'Final Results → (Auto in 6s)'}
+              {currentRound + 1 < allPhotos.length ? 'Next Round' : 'Final Results'}
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ImageBackground>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ImageBackground 
+      source={require('../assets/background.png')} 
+      style={styles.container}
+      resizeMode="cover"
+      blurRadius={20}
+    >
+      <View style={styles.darkOverlay} />
       <View style={styles.header}>
-        <Text style={styles.roundText}>Round {currentRound + 1} of {allPhotos.length}</Text>
-        <Text style={styles.timerText}>⏱️ {timeLeft}s</Text>
-        <Text style={styles.scoreText}>Score: {scores[player.id] || 0}</Text>
+        <Text style={styles.roundText}>Round {currentRound + 1}/{allPhotos.length}</Text>
+        <Text style={styles.timerText}>{timeLeft}s</Text>
+        <Text style={styles.scoreText}>{scores[player.id] || 0} pts</Text>
       </View>
 
       {/* Time Progress Bar */}
@@ -338,100 +432,125 @@ export const VideoGameScreen: React.FC<VideoGameScreenProps> = ({ route, navigat
           onError={(error) => console.log('Video error:', error)}
         />
         <View style={styles.videoPlayingBadge}>
-          <Text style={styles.videoPlayingText}>🎬 Playing</Text>
+          <Text style={styles.videoPlayingText}>Playing</Text>
         </View>
       </View>
 
       <View style={styles.guessSection}>
-        <Text style={styles.guessTitle}>Whose video is this?</Text>
-        <ScrollView style={styles.playersList}>
-          {room.players.map((p: Player) => {
-            const isSelected = guessedPlayerId === p.id;
-            const isOtherWhenGuessed = hasGuessed && !isSelected;
+        <Text style={styles.guessTitle}>Whose video?</Text>
+        <View style={styles.playersGrid}>
+          {(() => {
+            const players = room.players;
+            const isOdd = players.length % 2 !== 0;
+            const pairedPlayers = isOdd ? players.slice(0, -1) : players;
+            const lastPlayer = isOdd ? players[players.length - 1] : null;
+            
             return (
-              <TouchableOpacity
-                key={p.id}
-                style={[
-                  styles.playerButton,
-                  isSelected && styles.playerButtonSelected,
-                  isOtherWhenGuessed && styles.playerButtonDisabled,
-                ]}
-                onPress={() => handleGuess(p)}
-                disabled={hasGuessed}
-              >
-                <View style={styles.playerButtonContent}>
-                  {isSelected && <Text style={styles.selectedIcon}>✓</Text>}
-                  <Text style={[
-                    styles.playerButtonText,
-                    isSelected && styles.playerButtonTextSelected,
-                  ]}>{p.name}</Text>
+              <>
+                <View style={styles.playersRow}>
+                  {pairedPlayers.map((p: Player) => {
+                    const isSelected = guessedPlayerId === p.id;
+                    const isOtherWhenGuessed = hasGuessed && !isSelected;
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[
+                          styles.playerButton,
+                          isSelected && styles.playerButtonSelected,
+                          isOtherWhenGuessed && styles.playerButtonDisabled,
+                        ]}
+                        onPress={() => handleGuess(p)}
+                        disabled={hasGuessed}
+                      >
+                        <Text style={[
+                          styles.playerButtonText,
+                          isSelected && styles.playerButtonTextSelected,
+                        ]}>{p.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-                {isSelected && (
-                  <Text style={styles.selectedLabel}>YOUR GUESS</Text>
+                {lastPlayer && (
+                  <TouchableOpacity
+                    key={lastPlayer.id}
+                    style={[
+                      styles.playerButtonFull,
+                      guessedPlayerId === lastPlayer.id && styles.playerButtonSelected,
+                      hasGuessed && guessedPlayerId !== lastPlayer.id && styles.playerButtonDisabled,
+                    ]}
+                    onPress={() => handleGuess(lastPlayer)}
+                    disabled={hasGuessed}
+                  >
+                    <Text style={[
+                      styles.playerButtonText,
+                      guessedPlayerId === lastPlayer.id && styles.playerButtonTextSelected,
+                    ]}>{lastPlayer.name}</Text>
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
+              </>
             );
-          })}
-        </ScrollView>
+          })()}
+        </View>
       </View>
-    </View>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: Colors.background,
+  },
+  darkOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 6,
   },
   roundText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.white,
   },
   timerText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFD700',
-    marginHorizontal: 12,
+    color: Colors.cyan,
   },
   scoreText: {
-    fontSize: 16,
-    color: '#4CAF50',
+    fontSize: 14,
+    color: Colors.purple,
     fontWeight: '600',
   },
   videoContainer: {
     alignItems: 'center',
-    marginVertical: 10,
+    marginVertical: 4,
     position: 'relative',
   },
   video: {
     width: VIDEO_SIZE,
     height: VIDEO_SIZE,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#000',
   },
   videoPlayingBadge: {
     position: 'absolute',
     top: 12,
-    left: 32,
-    backgroundColor: 'rgba(156, 39, 176, 0.9)',
+    left: 22,
+    backgroundColor: Colors.purple,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
   },
   videoPlayingText: {
-    color: '#fff',
-    fontSize: 14,
+    color: Colors.white,
+    fontSize: 12,
     fontWeight: '600',
   },
   videoErrorContainer: {
@@ -442,65 +561,82 @@ const styles = StyleSheet.create({
   videoErrorText: {
     position: 'absolute',
     zIndex: 1,
-    color: '#fff',
-    fontSize: 16,
+    color: Colors.white,
+    fontSize: 14,
   },
   timeProgressContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
   timeProgressBackground: {
     width: '100%',
-    height: 8,
-    backgroundColor: '#333',
-    borderRadius: 4,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 2,
     overflow: 'hidden',
   },
   timeProgressBar: {
     height: '100%',
-    backgroundColor: '#9C27B0',
-    borderRadius: 4,
+    backgroundColor: Colors.purple,
+    borderRadius: 2,
   },
   guessSection: {
     flex: 1,
-    backgroundColor: '#2a2a2a',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 24,
-    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingHorizontal: 12,
   },
   guessTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 16,
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+    marginBottom: 10,
     textAlign: 'center',
   },
   playersList: {
     flex: 1,
   },
+  playersGrid: {
+    flex: 1,
+  },
+  playersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  playersListHorizontal: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
   playerButton: {
-    backgroundColor: '#3a3a3a',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#4a4a4a',
+    width: '48%',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+  },
+  playerButtonFull: {
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
   },
   playerButtonSelected: {
-    backgroundColor: '#9C27B0',
-    borderColor: '#BA68C8',
-    borderWidth: 3,
-    shadowColor: '#9C27B0',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: Colors.purple,
+    borderColor: Colors.purple,
   },
   playerButtonDisabled: {
-    opacity: 0.4,
-    backgroundColor: '#2a2a2a',
+    opacity: 0.3,
   },
   playerButtonContent: {
     flexDirection: 'row',
@@ -508,116 +644,119 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   selectedIcon: {
-    fontSize: 22,
-    color: '#fff',
+    fontSize: 18,
+    color: Colors.white,
     fontWeight: 'bold',
-    marginRight: 10,
+    marginRight: 6,
   },
   playerButtonText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: Colors.white,
     textAlign: 'center',
   },
   playerButtonTextSelected: {
-    fontSize: 20,
     fontWeight: 'bold',
   },
   selectedLabel: {
-    fontSize: 11,
+    fontSize: 9,
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: 'bold',
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 4,
     letterSpacing: 1,
   },
   resultsContainer: {
     flex: 1,
-    padding: 20,
-    paddingTop: 60,
+    padding: 16,
+    paddingTop: 50,
   },
   resultsTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   videoReveal: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   revealedVideo: {
-    width: VIDEO_SIZE * 0.6,
-    height: VIDEO_SIZE * 0.6,
+    width: VIDEO_SIZE * 0.5,
+    height: VIDEO_SIZE * 0.5,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 8,
     backgroundColor: '#000',
   },
   videoOwner: {
-    fontSize: 18,
-    color: '#fff',
+    fontSize: 16,
+    color: Colors.white,
     fontWeight: '600',
   },
   myResultCard: {
-    backgroundColor: '#2a2a2a',
-    padding: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 20,
     borderRadius: 16,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   correctText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-    marginBottom: 8,
-  },
-  wrongText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#F44336',
-    marginBottom: 8,
-  },
-  pointsText: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFD700',
+    color: Colors.cyan,
+    marginBottom: 4,
+  },
+  wrongText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: Colors.pink,
+    marginBottom: 4,
+  },
+  pointsText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.cyan,
     marginBottom: 4,
   },
   noPointsText: {
-    fontSize: 24,
-    color: '#999',
+    fontSize: 20,
+    color: Colors.textMuted,
   },
   timeText: {
-    fontSize: 16,
-    color: '#999',
+    fontSize: 14,
+    color: Colors.textMuted,
   },
   scoresContainer: {
-    backgroundColor: '#2a2a2a',
-    padding: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 16,
     borderRadius: 16,
-    marginBottom: 24,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   scoresTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 12,
+    color: Colors.white,
+    marginBottom: 10,
   },
   scoreItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 6,
-    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 4,
+    borderRadius: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   scoreItemUp: {
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
+    backgroundColor: 'rgba(76, 201, 240, 0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(76, 175, 80, 0.5)',
+    borderColor: 'rgba(76, 201, 240, 0.4)',
   },
   scoreRankContainer: {
     flexDirection: 'row',
@@ -625,40 +764,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rankUpIcon: {
-    fontSize: 16,
-    marginRight: 8,
+    fontSize: 14,
+    marginRight: 6,
   },
   rankDownIcon: {
-    fontSize: 16,
-    marginRight: 8,
+    fontSize: 14,
+    marginRight: 6,
   },
   scoreName: {
-    fontSize: 16,
-    color: '#fff',
+    fontSize: 14,
+    color: Colors.white,
   },
   scoreDetails: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   responseTime: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   scorePoints: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#4CAF50',
+    color: Colors.cyan,
   },
   nextButton: {
-    backgroundColor: '#9C27B0',
-    paddingVertical: 16,
+    backgroundColor: Colors.purple,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
   nextButtonText: {
-    color: '#fff',
-    fontSize: 18,
+    color: Colors.white,
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });

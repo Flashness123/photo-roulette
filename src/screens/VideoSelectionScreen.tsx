@@ -15,6 +15,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+import Colors from '../theme/colors';
 
 interface VideoSelectionScreenProps {
   route: any;
@@ -28,7 +29,7 @@ interface VideoAsset {
 }
 
 const { width, height } = Dimensions.get('window');
-const backgroundImage = require('../assets/friends2.jpg');
+const backgroundImage = require('../assets/background.png');
 
 // Fixed 4x4 grid for 16 videos
 const REQUIRED_VIDEOS = 16;
@@ -192,7 +193,7 @@ export const VideoSelectionScreen: React.FC<VideoSelectionScreenProps> = ({
         resizeMode="cover"
       />
       <View style={styles.videoBadge}>
-        <Text style={styles.videoBadgeText}>🎬</Text>
+        <Text style={styles.videoBadgeText}>V</Text>
       </View>
       {item.duration != null && item.duration > 0 && (
         <View style={styles.durationBadge}>
@@ -208,10 +209,9 @@ export const VideoSelectionScreen: React.FC<VideoSelectionScreenProps> = ({
     <ImageBackground
       source={backgroundImage}
       style={styles.container}
-      blurRadius={8}
+      resizeMode="cover"
     >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      <View style={styles.overlay} />
       
       <View style={styles.content}>
         {/* Header */}
@@ -223,21 +223,14 @@ export const VideoSelectionScreen: React.FC<VideoSelectionScreenProps> = ({
             <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
           <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>🎬 Video Selection</Text>
+            <Text style={styles.headerTitle}>Video Selection</Text>
             <Text style={styles.headerSubtitle}>Select {REQUIRED_VIDEOS} videos for the game</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.shuffleButton}
-            onPress={loadRandomVideos}
-          >
-            <Text style={styles.shuffleButtonText}>🔄</Text>
-          </TouchableOpacity>
         </View>
 
         {loading ? (
           <View style={styles.loadingContainer}>
             <View style={styles.loadingCard}>
-              <Text style={styles.loadingEmoji}>🎬</Text>
               <Text style={styles.loadingTitle}>Scanning Videos</Text>
               <Text style={styles.loadingText}>{loadingMessage}</Text>
               
@@ -253,13 +246,9 @@ export const VideoSelectionScreen: React.FC<VideoSelectionScreenProps> = ({
           <>
             {/* Video Count Card */}
             <View style={styles.photoCountCard}>
-              <Text style={styles.photoCountIcon}>🎬</Text>
               <Text style={styles.photoCountText}>
-                {selectedVideos.length} of {REQUIRED_VIDEOS} videos ready
+                {selectedVideos.length}/{REQUIRED_VIDEOS} videos ready
               </Text>
-              {selectedVideos.length >= REQUIRED_VIDEOS && (
-                <Text style={styles.photoCountCheck}>✓</Text>
-              )}
             </View>
 
             {/* Video Grid */}
@@ -278,29 +267,31 @@ export const VideoSelectionScreen: React.FC<VideoSelectionScreenProps> = ({
               />
             </View>
 
-            {/* Footer Actions */}
+            {/* Footer Actions - Yes/No buttons like PhotoSelectionScreen */}
             <View style={styles.footer}>
-              <TouchableOpacity
-                style={styles.shuffleVideosButton}
-                onPress={loadRandomVideos}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.shuffleVideosButtonText}>🔄  Shuffle Videos</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.confirmButton,
-                  selectedVideos.length < REQUIRED_VIDEOS && styles.confirmButtonDisabled,
-                ]}
-                onPress={handleConfirm}
-                disabled={selectedVideos.length < REQUIRED_VIDEOS}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmButtonText}>
-                  ✓  Lock In Videos ({selectedVideos.length}/{REQUIRED_VIDEOS})
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={styles.noButton}
+                  onPress={loadRandomVideos}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.buttonText}>No</Text>
+                  <Text style={styles.buttonSubtext}>Reshuffle</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.yesButton,
+                    selectedVideos.length < REQUIRED_VIDEOS && styles.buttonDisabled,
+                  ]}
+                  onPress={handleConfirm}
+                  disabled={selectedVideos.length < REQUIRED_VIDEOS}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.buttonText}>Yes</Text>
+                  <Text style={styles.buttonSubtext}>Lock In</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </>
         )}
@@ -314,10 +305,6 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   content: {
     flex: 1,
@@ -336,13 +323,15 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   backButtonText: {
     fontSize: 24,
-    color: '#fff',
+    color: Colors.white,
     fontWeight: 'bold',
   },
   headerTextContainer: {
@@ -350,25 +339,14 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    color: Colors.textLight,
     marginTop: 2,
-  },
-  shuffleButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  shuffleButtonText: {
-    fontSize: 20,
   },
 
   // Loading
@@ -379,29 +357,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   loadingCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 24,
-    padding: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 20,
+    padding: 28,
     alignItems: 'center',
     width: '100%',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  loadingEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   loadingTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: Colors.white,
     marginBottom: 8,
   },
   loadingText: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    color: Colors.textLight,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   progressBarContainer: {
     width: '100%',
@@ -409,50 +383,39 @@ const styles = StyleSheet.create({
   },
   progressBarBackground: {
     width: '100%',
-    height: 8,
+    height: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#9C27B0',
-    borderRadius: 4,
+    backgroundColor: Colors.purple,
+    borderRadius: 3,
   },
   progressText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    color: Colors.textLight,
     marginTop: 8,
   },
 
   // Video Count Card
   photoCountCard: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     marginHorizontal: 16,
     marginBottom: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  photoCountIcon: {
-    fontSize: 24,
-    marginRight: 10,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   photoCountText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
-  },
-  photoCountCheck: {
-    marginLeft: 10,
-    fontSize: 18,
-    color: '#4CAF50',
-    fontWeight: 'bold',
+    color: Colors.white,
   },
   
   // Grid Container
@@ -461,8 +424,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     marginHorizontal: 8,
     marginBottom: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     overflow: 'hidden',
   },
   photoGrid: {
@@ -477,21 +440,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   photo: {
-    borderRadius: 10,
+    borderRadius: 8,
   },
   videoBadge: {
     position: 'absolute',
     top: 8,
     left: 8,
-    backgroundColor: 'rgba(156, 39, 176, 0.9)',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    backgroundColor: Colors.purple,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   videoBadgeText: {
-    fontSize: 12,
+    fontSize: 10,
+    color: Colors.white,
+    fontWeight: 'bold',
   },
   durationBadge: {
     position: 'absolute',
@@ -503,8 +468,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   durationText: {
-    fontSize: 10,
-    color: '#fff',
+    fontSize: 9,
+    color: Colors.white,
     fontWeight: '600',
   },
   
@@ -513,41 +478,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 30,
     paddingTop: 12,
-    gap: 10,
   },
-  shuffleVideosButton: {
-    backgroundColor: '#9C27B0',
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  noButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     paddingVertical: 16,
-    borderRadius: 16,
+    borderRadius: 14,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
-  shuffleVideosButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  confirmButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 18,
-    borderRadius: 16,
+  yesButton: {
+    flex: 1,
+    backgroundColor: Colors.purple,
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
-  confirmButtonDisabled: {
-    backgroundColor: 'rgba(150, 150, 150, 0.6)',
+  buttonDisabled: {
+    backgroundColor: 'rgba(114, 9, 183, 0.4)',
   },
-  confirmButtonText: {
-    color: '#fff',
+  buttonText: {
+    color: Colors.white,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: 'bold',
+  },
+  buttonSubtext: {
+    color: Colors.textLight,
+    fontSize: 11,
+    marginTop: 2,
   },
 });

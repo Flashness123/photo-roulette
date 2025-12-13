@@ -12,7 +12,6 @@ import {
   Platform,
   ImageBackground,
   StatusBar,
-  Switch,
 } from 'react-native';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import ImageLabeling from '@react-native-ml-kit/image-labeling';
@@ -57,7 +56,6 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [hasPermission, setHasPermission] = useState(false);
   const [allPhotosCache, setAllPhotosCache] = useState<PhotoAsset[]>([]);
-  const [prioritizePeople, setPrioritizePeople] = useState(false);
 
   useEffect(() => {
     requestPermission();
@@ -230,11 +228,7 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
   };
 
   const handleReshuffle = () => {
-    if (prioritizePeople) {
-      loadPhotosWithPeople();
-    } else {
-      loadRandomPhotos();
-    }
+    loadRandomPhotos();
   };
 
   const handleConfirm = async () => {
@@ -340,32 +334,27 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
               />
             </View>
 
-            {/* Prioritize People Toggle */}
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Prioritize photos with people</Text>
-              <Switch
-                value={prioritizePeople}
-                onValueChange={setPrioritizePeople}
-                trackColor={{ false: 'rgba(255,255,255,0.2)', true: Colors.purple }}
-                thumbColor={prioritizePeople ? Colors.pink : '#f4f3f4'}
-              />
-            </View>
-
-            {/* Yes/No Buttons */}
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.noButton} onPress={handleReshuffle} activeOpacity={0.8}>
-                <Text style={styles.buttonText}>No</Text>
-                <Text style={styles.buttonSubtext}>Reshuffle</Text>
-              </TouchableOpacity>
+            {/* Action Buttons */}
+            <View style={styles.buttonContainer}>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity style={styles.noButton} onPress={handleReshuffle} activeOpacity={0.8}>
+                  <Text style={styles.buttonText}>No</Text>
+                  <Text style={styles.buttonSubtext}>Reshuffle</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.yesButton, selectedPhotos.length < requiredPhotos && styles.buttonDisabled]} 
+                  onPress={handleConfirm}
+                  disabled={selectedPhotos.length < requiredPhotos}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.buttonText}>Yes</Text>
+                  <Text style={styles.buttonSubtext}>Lock In</Text>
+                </TouchableOpacity>
+              </View>
               
-              <TouchableOpacity 
-                style={[styles.yesButton, selectedPhotos.length < requiredPhotos && styles.buttonDisabled]} 
-                onPress={handleConfirm}
-                disabled={selectedPhotos.length < requiredPhotos}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.buttonText}>Yes</Text>
-                <Text style={styles.buttonSubtext}>Lock In</Text>
+              <TouchableOpacity style={styles.peopleButton} onPress={loadPhotosWithPeople} activeOpacity={0.8}>
+                <Text style={styles.buttonText}>Find Photos with People</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -423,7 +412,6 @@ const styles = StyleSheet.create({
   
   // Grid Container
   gridContainer: {
-    flex: 1,
     marginHorizontal: 8,
     marginBottom: 8,
     borderRadius: 20,
@@ -432,6 +420,7 @@ const styles = StyleSheet.create({
   },
   photoGrid: {
     padding: 8,
+    paddingBottom: 8,
     alignItems: 'center',
   },
   photoContainer: {
@@ -455,49 +444,37 @@ const styles = StyleSheet.create({
     borderColor: Colors.white,
   },
   
-  // Toggle Row
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    paddingVertical: 12,
+  // Button Container
+  buttonContainer: {
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
+    paddingBottom: 40,
+    paddingTop: 12,
   },
-  toggleLabel: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  
-  // Button Row
   buttonRow: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 16,
+    gap: 12,
+    marginBottom: 12,
   },
   noButton: {
     flex: 1,
     backgroundColor: Colors.blue,
-    paddingVertical: 18,
-    borderRadius: 16,
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  peopleButton: {
+    width: '100%',
+    backgroundColor: Colors.purple,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: 'center',
   },
   yesButton: {
     flex: 1,
     backgroundColor: Colors.pink,
-    paddingVertical: 18,
-    borderRadius: 16,
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
-    shadowColor: Colors.pink,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
   },
   buttonDisabled: {
     backgroundColor: 'rgba(150, 150, 150, 0.6)',
