@@ -1,3 +1,5 @@
+export type GameType = 'photo' | 'video';
+
 export interface Player {
   id: string;
   name: string;
@@ -23,6 +25,8 @@ export interface GameRoom {
   currentRound: number;
   maxRounds: number;
   photos: Photo[];
+  gameType?: GameType;
+  numRounds?: number;
   createdAt: Date;
   updatedAt: Date;
 }

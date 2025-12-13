@@ -13,12 +13,13 @@ import {
   StatusBar,
 } from 'react-native';
 import { gameService } from '../services/gameService';
+import Colors from '../theme/colors';
 
 const {width, height} = Dimensions.get('window');
 
-// Import assets
-const backgroundImage = require('../assets/friends2.jpg');
-const logoImage = require('../assets/Pic_Roulette_logo.png');
+// Import new assets
+const backgroundImage = require('../assets/background.png');
+const logoImage = require('../assets/logo.png');
 
 interface WelcomeScreenProps {
   navigation: any;
@@ -27,12 +28,23 @@ interface WelcomeScreenProps {
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
   const [playerName, setPlayerName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showGameTypeSelection, setShowGameTypeSelection] = useState(false);
   const [showRoundSelection, setShowRoundSelection] = useState(false);
-  const [showStorePopup, setShowStorePopup] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
+  const [selectedGameType, setSelectedGameType] = useState<'photo' | 'video'>('photo');
 
-  const handleCreateGame = async (numRounds: number) => {
+  const handleGameTypeSelect = (gameType: 'photo' | 'video') => {
+    setSelectedGameType(gameType);
+    setShowGameTypeSelection(false);
+    if (gameType === 'photo') {
+      setShowRoundSelection(true);
+    } else {
+      handleCreateGame(16, 'video');
+    }
+  };
+
+  const handleCreateGame = async (numRounds: number, gameType: 'photo' | 'video' = selectedGameType) => {
     if (!playerName.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return;
@@ -48,6 +60,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           room: result.room,
           player: result.player,
           numRounds: numRounds,
+          gameType: gameType,
         });
       } else {
         Alert.alert('Error', 'Failed to create room. Please try again.');
@@ -61,15 +74,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
 
   const handleCreateGamePress = () => {
     if (!playerName.trim()) {
-      Alert.alert('Oops!', 'Please enter your name first');
+      Alert.alert('Enter Name', 'Please enter your name first');
       return;
     }
-    setShowRoundSelection(true);
+    setShowGameTypeSelection(true);
   };
 
   const handleJoinGamePress = () => {
     if (!playerName.trim()) {
-      Alert.alert('Oops!', 'Please enter your name first');
+      Alert.alert('Enter Name', 'Please enter your name first');
       return;
     }
     setShowJoinModal(true);
@@ -90,7 +103,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
         navigation.navigate('Room', {
           room: result.room,
           player: result.player,
-          numRounds: 20,
+          numRounds: result.room.numRounds || 20,
+          gameType: result.room.gameType || 'photo',
         });
       } else {
         Alert.alert('Error', 'Failed to join room. Please check the code and try again.');
@@ -107,16 +121,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       
-      {/* Blurred Background Image */}
       <ImageBackground
         source={backgroundImage}
         style={styles.backgroundImage}
-        blurRadius={8}
+        resizeMode="cover"
       >
-        {/* Dark overlay for better readability */}
         <View style={styles.overlay} />
         
-        {/* Content */}
         <View style={styles.content}>
           {/* Logo */}
           <View style={styles.logoContainer}>
@@ -125,23 +136,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.title}>Pic Roulette</Text>
-            <Text style={styles.subtitle}>Guess whose photo it is!</Text>
           </View>
 
           {/* Player Name Input */}
           <View style={styles.inputContainer}>
-            <View style={styles.inputWrapper}>
-              <Text style={styles.inputIcon}>👤</Text>
-              <TextInput
-                style={styles.input}
-                value={playerName}
-                onChangeText={setPlayerName}
-                placeholder="Your nickname"
-                placeholderTextColor="rgba(255,255,255,0.5)"
-                maxLength={20}
-              />
-            </View>
+            <TextInput
+              style={styles.input}
+              value={playerName}
+              onChangeText={setPlayerName}
+              placeholder="Enter your name"
+              placeholderTextColor={Colors.textMuted}
+              maxLength={20}
+            />
           </View>
 
           {/* Action Buttons */}
@@ -152,7 +158,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
               disabled={isLoading}
               activeOpacity={0.8}
             >
-              <Text style={styles.buttonIcon}>🎮</Text>
               <Text style={styles.buttonText}>
                 {isLoading ? 'Creating...' : 'Create Game'}
               </Text>
@@ -164,24 +169,53 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
               disabled={isLoading}
               activeOpacity={0.8}
             >
-              <Text style={styles.buttonIcon}>🔗</Text>
               <Text style={styles.buttonText}>
                 {isLoading ? 'Joining...' : 'Join Game'}
               </Text>
             </TouchableOpacity>
           </View>
-
-          {/* Bottom Store Icon */}
-          <TouchableOpacity 
-            style={styles.storeButton} 
-            onPress={() => setShowStorePopup(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.storeButtonIcon}>🛒</Text>
-            <Text style={styles.storeButtonText}>Store</Text>
-          </TouchableOpacity>
         </View>
       </ImageBackground>
+
+      {/* Game Type Selection Modal - Keep emojis here */}
+      <Modal
+        visible={showGameTypeSelection}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowGameTypeSelection(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Choose Game Type</Text>
+            <View style={styles.gameTypeContainer}>
+              <TouchableOpacity
+                style={[styles.gameTypeButton, styles.photoGameType]}
+                onPress={() => handleGameTypeSelect('photo')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.gameTypeIcon}>📷</Text>
+                <Text style={styles.gameTypeTitle}>Photo Roulette</Text>
+                <Text style={styles.gameTypeDesc}>Pixelated photos reveal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.gameTypeButton, styles.videoGameType]}
+                onPress={() => handleGameTypeSelect('video')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.gameTypeIcon}>🎬</Text>
+                <Text style={styles.gameTypeTitle}>Video Roulette</Text>
+                <Text style={styles.gameTypeDesc}>6-second video clips</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowGameTypeSelection(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Round Selection Modal */}
       <Modal
@@ -192,25 +226,27 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalEmoji}>🎯</Text>
             <Text style={styles.modalTitle}>How Many Rounds?</Text>
             <View style={styles.roundButtonsContainer}>
               {[
-                { rounds: 10, label: 'Quick', color: '#4CAF50' },
-                { rounds: 20, label: 'Short', color: '#2196F3' },
-                { rounds: 50, label: 'Medium', color: '#FF9800' },
-                { rounds: 100, label: 'Epic', color: '#E91E63' },
-              ].map((option) => (
-                <TouchableOpacity
-                  key={option.rounds}
-                  style={[styles.roundButton, { backgroundColor: option.color }]}
-                  onPress={() => handleCreateGame(option.rounds)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.roundButtonNumber}>{option.rounds}</Text>
-                  <Text style={styles.roundButtonLabel}>{option.label}</Text>
-                </TouchableOpacity>
-              ))}
+                { rounds: 10, label: 'Quick' },
+                { rounds: 20, label: 'Short' },
+                { rounds: 50, label: 'Medium' },
+                { rounds: 100, label: 'Epic' },
+              ].map((option, index) => {
+                const colors = [Colors.cyan, Colors.blue, Colors.purple, Colors.pink];
+                return (
+                  <TouchableOpacity
+                    key={option.rounds}
+                    style={[styles.roundButton, { backgroundColor: colors[index] }]}
+                    onPress={() => handleCreateGame(option.rounds)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.roundButtonNumber}>{option.rounds}</Text>
+                    <Text style={styles.roundButtonLabel}>{option.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <TouchableOpacity
               style={styles.modalCancelButton}
@@ -231,7 +267,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalEmoji}>🔑</Text>
             <Text style={styles.modalTitle}>Enter Room Code</Text>
             <TextInput
               style={styles.codeInput}
@@ -263,30 +298,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           </View>
         </View>
       </Modal>
-
-      {/* Store Popup Modal */}
-      <Modal
-        visible={showStorePopup}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowStorePopup(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.storeModalContent}>
-            <Text style={styles.storeModalIcon}>🛍️</Text>
-            <Text style={styles.storeModalTitle}>Store</Text>
-            <Text style={styles.storeModalMessage}>
-              New features and customizations coming soon!
-            </Text>
-            <TouchableOpacity
-              style={styles.storeModalButton}
-              onPress={() => setShowStorePopup(false)}
-            >
-              <Text style={styles.storeModalButtonText}>Got it!</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -294,6 +305,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
   backgroundImage: {
     flex: 1,
@@ -302,72 +314,43 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-    paddingTop: 60,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 60,
   },
   logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 42,
-    fontWeight: '800',
-    color: 'white',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 8,
-    letterSpacing: 1,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 8,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 4,
+    width: 200,
+    height: 200,
   },
   inputContainer: {
     width: '100%',
     marginBottom: 30,
   },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  input: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    paddingHorizontal: 16,
-  },
-  inputIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
+    borderColor: Colors.cardBorder,
     paddingVertical: 16,
+    paddingHorizontal: 20,
     fontSize: 18,
-    color: 'white',
+    color: Colors.white,
     fontWeight: '500',
+    textAlign: 'center',
   },
   buttonContainer: {
     width: '100%',
     gap: 16,
   },
   button: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 16,
@@ -380,65 +363,38 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   createButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: Colors.pink,
   },
   joinButton: {
-    backgroundColor: '#2196F3',
+    backgroundColor: Colors.blue,
   },
   disabledButton: {
     opacity: 0.6,
   },
-  buttonIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
   buttonText: {
-    color: 'white',
+    color: Colors.white,
     fontSize: 20,
     fontWeight: '700',
   },
-  storeButton: {
-    position: 'absolute',
-    bottom: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  storeButtonIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  storeButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.darkPurple,
     borderRadius: 24,
     padding: 28,
     width: width - 48,
     alignItems: 'center',
-  },
-  modalEmoji: {
-    fontSize: 48,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.purple,
   },
   modalTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#333',
+    color: Colors.white,
     marginBottom: 24,
   },
   roundButtonsContainer: {
@@ -447,6 +403,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
     marginBottom: 20,
+  },
+  gameTypeContainer: {
+    width: '100%',
+    gap: 12,
+    marginBottom: 20,
+  },
+  gameTypeButton: {
+    width: '100%',
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  photoGameType: {
+    backgroundColor: Colors.pink,
+  },
+  videoGameType: {
+    backgroundColor: Colors.purple,
+  },
+  gameTypeIcon: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  gameTypeTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  gameTypeDesc: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 4,
   },
   roundButton: {
     width: (width - 120) / 2,
@@ -462,7 +455,7 @@ const styles = StyleSheet.create({
   roundButtonNumber: {
     fontSize: 32,
     fontWeight: '800',
-    color: 'white',
+    color: Colors.white,
   },
   roundButtonLabel: {
     fontSize: 14,
@@ -476,11 +469,11 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     fontSize: 16,
-    color: '#999',
+    color: Colors.textLight,
     fontWeight: '600',
   },
   codeInput: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 24,
@@ -499,61 +492,26 @@ const styles = StyleSheet.create({
   },
   joinModalCancel: {
     flex: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
   joinModalCancelText: {
     fontSize: 16,
-    color: '#666',
+    color: Colors.white,
     fontWeight: '600',
   },
   joinModalConfirm: {
     flex: 1,
-    backgroundColor: '#2196F3',
+    backgroundColor: Colors.cyan,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
   joinModalConfirmText: {
     fontSize: 16,
-    color: 'white',
+    color: Colors.white,
     fontWeight: '700',
-  },
-  storeModalContent: {
-    backgroundColor: 'white',
-    borderRadius: 24,
-    padding: 32,
-    width: width - 64,
-    alignItems: 'center',
-  },
-  storeModalIcon: {
-    fontSize: 56,
-    marginBottom: 16,
-  },
-  storeModalTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 12,
-  },
-  storeModalMessage: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-  storeModalButton: {
-    backgroundColor: '#E91E63',
-    paddingVertical: 14,
-    paddingHorizontal: 48,
-    borderRadius: 25,
-  },
-  storeModalButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: 'white',
   },
 });

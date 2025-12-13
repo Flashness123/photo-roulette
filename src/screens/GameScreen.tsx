@@ -32,7 +32,10 @@ interface PixelatedPhotoProps {
 const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }) => {
   const [base64Image, setBase64Image] = useState<string | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [showClearImage, setShowClearImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const webViewRef = useRef<WebView>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Load image as base64 for WebView
   useEffect(() => {
@@ -70,34 +73,37 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
   }, [uri]);
 
   // Map pixelLevel to block size (3 phases: 4 → 2 → 1)
-  // Phase 1 (0-2s): blockSize=4 (pixelLevel=4)
-  // Phase 2 (2-4s): blockSize=2 (pixelLevel=2)
-  // Phase 3 (4-6s): blockSize=1 (pixelLevel=0) - clear image
   const getBlockSize = (level: number): number => {
     if (level >= 4) return 4;
     if (level >= 2) return 2;
     return 1;
   };
 
-  const blockSize = getBlockSize(pixelLevel);
+  // Send new blockSize to WebView when pixelLevel changes
+  useEffect(() => {
+    if (pixelLevel === 0) {
+      // Smoothly transition to clear image
+      setShowClearImage(true);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      setShowClearImage(false);
+      fadeAnim.setValue(0);
+      // Send updated blockSize to WebView
+      if (webViewRef.current && base64Image) {
+        const blockSize = getBlockSize(pixelLevel);
+        webViewRef.current.injectJavaScript(`
+          window.updateBlockSize(${blockSize});
+          true;
+        `);
+      }
+    }
+  }, [pixelLevel, base64Image]);
 
-  // If level 0, just show original image (no pixelation needed)
-  if (pixelLevel === 0) {
-    return (
-      <View style={{ 
-        width: size, 
-        height: size, 
-        borderRadius: 12, 
-        overflow: 'hidden',
-      }}>
-        <Image
-          source={{ uri }}
-          style={{ width: size, height: size }}
-          resizeMode="cover"
-        />
-      </View>
-    );
-  }
+  const blockSize = getBlockSize(pixelLevel);
 
   // Show loading or error state
   if (!base64Image) {
@@ -119,7 +125,7 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
   }
 
   // HTML for true mosaic pixelation using canvas
-  // We inject the base64 data via injectedJavaScript to avoid URL length limits
+  // Now supports dynamic blockSize updates without remounting
   const html = `
     <!DOCTYPE html>
     <html>
@@ -150,8 +156,42 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
       <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const blockSize = ${blockSize};
+        let currentBlockSize = ${blockSize};
         const size = ${size};
+        let cachedImageData = null;
+        
+        function drawMosaic(blockSize) {
+          if (!cachedImageData) return;
+          
+          const data = cachedImageData.data;
+          
+          // Clear main canvas
+          ctx.fillStyle = '#1a1a2e';
+          ctx.fillRect(0, 0, size, size);
+          
+          // Draw mosaic blocks
+          for (let y = 0; y < size; y += blockSize) {
+            for (let x = 0; x < size; x += blockSize) {
+              // Sample color from center of block
+              const sampleX = Math.min(x + Math.floor(blockSize / 2), size - 1);
+              const sampleY = Math.min(y + Math.floor(blockSize / 2), size - 1);
+              const idx = (sampleY * size + sampleX) * 4;
+              
+              const r = data[idx];
+              const g = data[idx + 1];
+              const b = data[idx + 2];
+              
+              // Draw solid color block
+              ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+              ctx.fillRect(x, y, blockSize, blockSize);
+            }
+          }
+        }
+        
+        window.updateBlockSize = function(newBlockSize) {
+          currentBlockSize = newBlockSize;
+          drawMosaic(currentBlockSize);
+        };
         
         window.renderMosaic = function(base64Data) {
           const img = new Image();
@@ -170,31 +210,11 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
             
-            // Get image data
-            const imageData = tempCtx.getImageData(0, 0, size, size);
-            const data = imageData.data;
+            // Cache image data for reuse
+            cachedImageData = tempCtx.getImageData(0, 0, size, size);
             
-            // Clear main canvas
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(0, 0, size, size);
-            
-            // Draw mosaic blocks
-            for (let y = 0; y < size; y += blockSize) {
-              for (let x = 0; x < size; x += blockSize) {
-                // Sample color from center of block
-                const sampleX = Math.min(x + Math.floor(blockSize / 2), size - 1);
-                const sampleY = Math.min(y + Math.floor(blockSize / 2), size - 1);
-                const idx = (sampleY * size + sampleX) * 4;
-                
-                const r = data[idx];
-                const g = data[idx + 1];
-                const b = data[idx + 2];
-                
-                // Draw solid color block
-                ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
-                ctx.fillRect(x, y, blockSize, blockSize);
-              }
-            }
+            // Draw initial mosaic
+            drawMosaic(currentBlockSize);
             
             // Signal that we're done
             window.ReactNativeWebView.postMessage('loaded');
@@ -226,7 +246,9 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
       overflow: 'hidden',
       backgroundColor: '#1a1a2e',
     }}>
+      {/* Mosaic WebView - always rendered to avoid blinking */}
       <WebView
+        ref={webViewRef}
         source={{ html }}
         injectedJavaScript={injectedJS}
         style={{ 
@@ -255,6 +277,25 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
         allowFileAccessFromFileURLs={true}
         allowUniversalAccessFromFileURLs={true}
       />
+      
+      {/* Clear image overlay - fades in when pixelLevel reaches 0 */}
+      {showClearImage && (
+        <Animated.View style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          opacity: fadeAnim,
+        }}>
+          <Image
+            source={{ uri }}
+            style={{ width: size, height: size }}
+            resizeMode="cover"
+          />
+        </Animated.View>
+      )}
+      
       {!imageLoaded && (
         <View style={{
           position: 'absolute',
@@ -295,12 +336,13 @@ interface GuessResult {
 
 const { width, height } = Dimensions.get('window');
 const PHOTO_SIZE = width - 40;
+const ROUND_DURATION = 6000; // 6 seconds in ms
 
 export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => {
-  const { room, player, allPhotos } = route.params;
+  const { room, player, allPhotos, mosaicEnabled = true } = route.params;
   
   const [currentRound, setCurrentRound] = useState(0);
-  const [pixelLevel, setPixelLevel] = useState(4); // 3 phases: 4=most pixelated, 2=medium, 0=clear
+  const [pixelLevel, setPixelLevel] = useState(mosaicEnabled ? 4 : 0); // 3 phases: 4=most pixelated, 2=medium, 0=clear
   const [roundStartTime, setRoundStartTime] = useState(Date.now());
   const [hasGuessed, setHasGuessed] = useState(false);
   const [guessedPlayerId, setGuessedPlayerId] = useState<string | null>(null); // Track which player was guessed
@@ -309,6 +351,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
   const [scores, setScores] = useState<{ [playerId: string]: number }>({});
   const [previousScores, setPreviousScores] = useState<{ [playerId: string]: number }>({}); // For animation
   const [timeLeft, setTimeLeft] = useState(6); // 6 seconds per round
+  
+  // Smooth animated progress bar
+  const progressAnim = useRef(new Animated.Value(1)).current;
   
   const roundTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resultTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -326,19 +371,30 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
   // 3 phases over 6 seconds: blocksize 4 (2s) → 2 (2s) → 1 (2s)
   useEffect(() => {
     if (!showResults && currentRound < allPhotos.length) {
-      setPixelLevel(4);
+      setPixelLevel(mosaicEnabled ? 4 : 0);
       setTimeLeft(6);
       setRoundStartTime(Date.now());
       setGuessedPlayerId(null); // Reset guessed player for new round
 
-      // Phase transitions: 4 → 2 → 0 every 2 seconds
-      const pixelInterval = setInterval(() => {
-        setPixelLevel(prev => {
-          if (prev >= 4) return 2;
-          if (prev >= 2) return 0;
-          return 0;
-        });
-      }, 2000);
+      // Start smooth progress bar animation
+      progressAnim.setValue(1);
+      Animated.timing(progressAnim, {
+        toValue: 0,
+        duration: ROUND_DURATION,
+        useNativeDriver: false,
+      }).start();
+
+      // Phase transitions: 4 → 2 → 0 every 2 seconds (only if mosaic enabled)
+      let pixelInterval: NodeJS.Timeout | null = null;
+      if (mosaicEnabled) {
+        pixelInterval = setInterval(() => {
+          setPixelLevel(prev => {
+            if (prev >= 4) return 2;
+            if (prev >= 2) return 0;
+            return 0;
+          });
+        }, 2000);
+      }
 
       // Update countdown timer
       const timerInterval = setInterval(() => {
@@ -355,8 +411,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       }, 1000);
 
       return () => {
-        clearInterval(pixelInterval);
+        if (pixelInterval) clearInterval(pixelInterval);
         clearInterval(timerInterval);
+        progressAnim.stopAnimation();
       };
     }
   }, [currentRound, showResults]);
@@ -575,24 +632,37 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
         <Text style={styles.scoreText}>Score: {scores[player.id] || 0}</Text>
       </View>
 
-      {/* Time Progress Bar at the top */}
+      {/* Smooth Animated Time Progress Bar */}
       <View style={styles.timeProgressContainer}>
         <View style={styles.timeProgressBackground}>
-          <View
+          <Animated.View
             style={[
               styles.timeProgressBar,
-              { width: `${(timeLeft / 6) * 100}%` },
+              { 
+                width: progressAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0%', '100%'],
+                }),
+              },
             ]}
           />
         </View>
       </View>
 
       <View style={styles.photoContainer}>
-        <PixelatedPhoto
-          uri={currentPhoto.photoUri}
-          pixelLevel={pixelLevel}
-          size={PHOTO_SIZE}
-        />
+        {mosaicEnabled ? (
+          <PixelatedPhoto
+            uri={currentPhoto.photoUri}
+            pixelLevel={pixelLevel}
+            size={PHOTO_SIZE}
+          />
+        ) : (
+          <Image
+            source={{ uri: currentPhoto.photoUri }}
+            style={{ width: PHOTO_SIZE, height: PHOTO_SIZE, borderRadius: 12 }}
+            resizeMode="cover"
+          />
+        )}
       </View>
 
       <View style={styles.guessSection}>

@@ -4,18 +4,28 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Alert,
-  RefreshControl,
   ImageBackground,
   StatusBar,
   Dimensions,
 } from 'react-native';
-import { GameRoom, Player } from '../types/game';
-import { gameService } from '../services/gameService';
+import { GameRoom, Player, GameType } from '../types/game';
+import Colors from '../theme/colors';
 
 const { width, height } = Dimensions.get('window');
-const backgroundImage = require('../assets/friends2.jpg');
+const backgroundImage = require('../assets/background.png');
+
+// Player spawn positions - scattered pattern
+const PLAYER_POSITIONS = [
+  { top: '10%', left: '20%' },
+  { top: '5%', left: '55%' },
+  { top: '25%', left: '10%' },
+  { top: '20%', left: '70%' },
+  { top: '45%', left: '25%' },
+  { top: '40%', left: '60%' },
+  { top: '60%', left: '15%' },
+  { top: '55%', left: '75%' },
+];
 
 interface RoomScreenProps {
   route: any;
@@ -23,41 +33,33 @@ interface RoomScreenProps {
 }
 
 export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => {
-  console.log('RoomScreen route params:', route?.params);
-  
-  // Safe parameter extraction
   const params = route?.params;
+  
   if (!params || !params.room || !params.player) {
-    console.error('Missing room parameters:', params);
     return (
-      <ImageBackground
-        source={backgroundImage}
-        style={styles.container}
-        blurRadius={8}
-      >
+      <ImageBackground source={backgroundImage} style={styles.container} resizeMode="cover">
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
         <View style={styles.overlay} />
         <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={styles.errorText}>Room data is missing</Text>
-          <TouchableOpacity 
-            style={styles.errorButton}
-            onPress={() => navigation.navigate('Welcome')}
-          >
-            <Text style={styles.errorButtonText}>🏠  Go Back</Text>
+          <TouchableOpacity style={styles.errorButton} onPress={() => navigation.navigate('Welcome')}>
+            <Text style={styles.errorButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </ImageBackground>
     );
   }
   
-  const { room: initialRoom, player: currentPlayer, selectedPhotos: initialPhotos, numRounds: initialNumRounds } = params;
+  const { room: initialRoom, player: currentPlayer, selectedPhotos: initialPhotos, numRounds: initialNumRounds, gameType: initialGameType } = params;
   const [room, setRoom] = useState<GameRoom>(initialRoom);
-  const [refreshing, setRefreshing] = useState(false);
   const [myPhotos, setMyPhotos] = useState<string[]>(initialPhotos || []);
   const [numRounds, setNumRounds] = useState(initialNumRounds || 20);
+  const [gameType, setGameType] = useState<GameType>(initialGameType || 'photo');
+  const [mosaicEnabled, setMosaicEnabled] = useState(true);
   
-  // Calculate required photos based on number of rounds
+  const isVideoMode = gameType === 'video';
+  const mediaLabel = isVideoMode ? 'videos' : 'photos';
+  
   const getRequiredPhotos = (rounds: number): number => {
     if (rounds >= 100) return 36;
     if (rounds >= 50) return 25;
@@ -66,19 +68,16 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
   
   const requiredPhotos = getRequiredPhotos(numRounds);
 
-  // Update photos when coming back from photo selection
   useEffect(() => {
     if (params.selectedPhotos) {
       setMyPhotos(params.selectedPhotos);
     }
   }, [params.selectedPhotos]);
 
-  // Auto-refresh player list every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchRoomData();
     }, 3000);
-
     return () => clearInterval(interval);
   }, [room.id]);
 
@@ -104,15 +103,9 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     }
   };
 
-  const refreshRoom = async () => {
-    setRefreshing(true);
-    await fetchRoomData();
-    setRefreshing(false);
-  };
-
   const handleExitRoom = async () => {
     Alert.alert(
-      '👋 Exit Room',
+      'Exit Room',
       'Are you sure you want to leave?',
       [
         { text: 'Stay', style: 'cancel' },
@@ -140,202 +133,144 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
   };
 
   const handleChoosePictures = () => {
-    navigation.navigate('PhotoSelection', { room, player: currentPlayer, numRounds, requiredPhotos });
-  };
-
-  const handleAddFakePlayer = async () => {
-    try {
-      const response = await fetch(
-        `https://photo-roulette-production-b12d.up.railway.app/debug/add-fake-player`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            roomId: room.id,
-            playerName: `Bot ${Math.floor(Math.random() * 1000)}`
-          }),
-        }
-      );
-
-      if (response.ok) {
-        await fetchRoomData();
-      } else {
-        const error = await response.json();
-        Alert.alert('Error', error.hint || 'Failed to add fake player');
-      }
-    } catch (error) {
-      console.error('Error adding fake player:', error);
-      Alert.alert('Error', 'Failed to add fake player');
+    if (isVideoMode) {
+      navigation.navigate('VideoSelection', { room, player: currentPlayer, numRounds, requiredPhotos, gameType });
+    } else {
+      navigation.navigate('PhotoSelection', { room, player: currentPlayer, numRounds, requiredPhotos, gameType });
     }
   };
 
   const handleStartGame = () => {
     if (!myPhotos || myPhotos.length < requiredPhotos) {
-      Alert.alert('📸 Select Photos First', `Please choose your ${requiredPhotos} photos before starting the game.`);
+      Alert.alert('Select Media First', `Please choose your ${requiredPhotos} ${mediaLabel} before starting.`);
       return;
     }
 
-    const allPhotos = myPhotos.map((uri, index) => ({
+    const allMedia = myPhotos.map((uri) => ({
       photoUri: uri,
       ownerId: currentPlayer.id,
       ownerName: currentPlayer.name,
     }));
 
-    const shuffled = allPhotos.sort(() => Math.random() - 0.5).slice(0, numRounds);
+    const shuffled = allMedia.sort(() => Math.random() - 0.5).slice(0, numRounds);
 
-    navigation.navigate('Game', {
-      room,
-      player: currentPlayer,
-      allPhotos: shuffled,
-      numRounds,
-    });
+    if (isVideoMode) {
+      navigation.navigate('VideoGame', {
+        room,
+        player: currentPlayer,
+        allPhotos: shuffled,
+        numRounds,
+        gameType,
+      });
+    } else {
+      navigation.navigate('Game', {
+        room,
+        player: currentPlayer,
+        allPhotos: shuffled,
+        numRounds,
+        gameType,
+        mosaicEnabled,
+      });
+    }
   };
 
   const photosSelected = myPhotos && myPhotos.length >= requiredPhotos;
-  const canStart = room.players.length >= 2 && photosSelected;
+  const canStart = room.players.length >= 1 && photosSelected;
 
   return (
-    <ImageBackground
-      source={backgroundImage}
-      style={styles.container}
-      blurRadius={8}
-    >
+    <ImageBackground source={backgroundImage} style={styles.container} resizeMode="cover">
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <View style={styles.overlay} />
       
       <View style={styles.content}>
-        {/* Header */}
+        {/* Header with Exit and Room Code */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.headerLabel}>Game Room</Text>
-            <Text style={styles.headerTitle}>Pic Roulette</Text>
-          </View>
           <TouchableOpacity style={styles.exitButton} onPress={handleExitRoom}>
             <Text style={styles.exitButtonText}>✕</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Room Code Card */}
-        <View style={styles.roomCodeCard}>
-          <View style={styles.roomCodeInner}>
-            <Text style={styles.roomCodeLabel}>📍 ROOM CODE</Text>
+          
+          <View style={styles.roomCodeContainer}>
+            <Text style={styles.roomCodeLabel}>Room Code</Text>
             <Text style={styles.roomCodeText}>{room.code}</Text>
-            <Text style={styles.roomCodeSubtext}>Share this code with friends to join!</Text>
-          </View>
-          <View style={styles.roundsBadge}>
-            <Text style={styles.roundsBadgeText}>{numRounds} rounds</Text>
-          </View>
-        </View>
-
-        {/* Players Section */}
-        <View style={styles.playersCard}>
-          <View style={styles.playersHeader}>
-            <Text style={styles.playersTitle}>👥 Players</Text>
-            <View style={styles.playerCountBadge}>
-              <Text style={styles.playerCountText}>{room.players.length}/8</Text>
-            </View>
           </View>
           
-          <ScrollView
-            style={styles.playersList}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl 
-                refreshing={refreshing} 
-                onRefresh={refreshRoom}
-                tintColor="#fff"
-                colors={['#E91E63']}
-              />
-            }
-          >
-            {room.players.map((player, index) => (
-              <View key={player.id} style={[
-                styles.playerItem,
-                index === room.players.length - 1 && styles.playerItemLast
-              ]}>
-                <View style={styles.playerAvatar}>
-                  <Text style={styles.playerAvatarText}>
-                    {player.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.playerInfo}>
-                  <View style={styles.playerNameRow}>
-                    <Text style={styles.playerName}>{player.name}</Text>
-                    {player.isHost && (
-                      <View style={styles.hostBadge}>
-                        <Text style={styles.hostBadgeText}>👑 HOST</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.playerStatus}>
-                    {player.photosLocked ? '✅ Ready' : '⏳ Selecting photos...'}
-                  </Text>
-                </View>
-                <Text style={styles.playerScore}>{player.score} pts</Text>
-              </View>
-            ))}
-          </ScrollView>
+          <View style={styles.headerSpacer} />
         </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionsContainer}>
-          {/* Photo Status */}
-          <View style={styles.photoStatus}>
-            <Text style={styles.photoStatusIcon}>{photosSelected ? '✅' : '📸'}</Text>
-            <Text style={styles.photoStatusText}>
-              {photosSelected 
-                ? `${myPhotos.length} photos selected` 
-                : `Select ${requiredPhotos} photos to play`}
-            </Text>
-          </View>
+        {/* Players Area - Spawn Pattern */}
+        <View style={styles.playersArea}>
+          {room.players.map((player, index) => {
+            const position = PLAYER_POSITIONS[index % PLAYER_POSITIONS.length];
+            const colors = [Colors.pink, Colors.purple, Colors.blue, Colors.cyan, Colors.darkPurple];
+            const bgColor = colors[index % colors.length];
+            
+            return (
+              <View
+                key={player.id}
+                style={[
+                  styles.playerBubble,
+                  { 
+                    top: position.top as any, 
+                    left: position.left as any,
+                    backgroundColor: bgColor,
+                  },
+                ]}
+              >
+                <Text style={styles.playerInitial}>
+                  {player.name.charAt(0).toUpperCase()}
+                </Text>
+                <Text style={styles.playerName} numberOfLines={1}>
+                  {player.name}
+                </Text>
+                {player.isHost && (
+                  <View style={styles.hostIndicator}>
+                    <Text style={styles.hostText}>HOST</Text>
+                  </View>
+                )}
+                {player.photosLocked && (
+                  <View style={styles.readyIndicator} />
+                )}
+              </View>
+            );
+          })}
+        </View>
 
+        {/* Bottom Actions */}
+        <View style={styles.bottomContainer}>
+          {/* Choose Pictures Button */}
           <TouchableOpacity
-            style={[styles.actionButton, styles.choosePicturesButton]}
+            style={styles.choosePicturesButton}
             onPress={handleChoosePictures}
             activeOpacity={0.8}
           >
-            <Text style={styles.actionButtonText}>
-              {photosSelected ? '🔄  Change Pictures' : '📷  Choose Pictures'}
+            <Text style={styles.choosePicturesText}>
+              {photosSelected ? 'Change Selection' : 'Choose Pictures'}
             </Text>
           </TouchableOpacity>
 
-          {__DEV__ && (
+          {/* Start Game Row */}
+          <View style={styles.startRow}>
             <TouchableOpacity
-              style={[styles.actionButton, styles.debugButton]}
-              onPress={handleAddFakePlayer}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.actionButtonText}>🤖  Add Bot (Debug)</Text>
-            </TouchableOpacity>
-          )}
-
-          {currentPlayer.isHost && (
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                styles.startGameButton,
-                !canStart && styles.buttonDisabled,
-              ]}
-              disabled={!canStart}
+              style={[styles.startButton, !canStart && styles.buttonDisabled]}
+              disabled={!canStart || !currentPlayer.isHost}
               onPress={handleStartGame}
               activeOpacity={0.8}
             >
               <Text style={styles.startButtonText}>
-                {room.players.length < 2 
-                  ? '⏳  Waiting for players...' 
-                  : !photosSelected
-                    ? `📸  Select ${requiredPhotos} photos first`
-                    : `🚀  Start Game (${numRounds} rounds)`}
+                {currentPlayer.isHost ? 'Start Game' : 'Waiting for Host...'}
               </Text>
             </TouchableOpacity>
-          )}
-
-          {!currentPlayer.isHost && (
-            <View style={styles.waitingCard}>
-              <Text style={styles.waitingIcon}>⏳</Text>
-              <Text style={styles.waitingText}>Waiting for host to start...</Text>
-            </View>
-          )}
+            
+            {/* Blur Toggle - Small */}
+            {!isVideoMode && (
+              <TouchableOpacity
+                style={[styles.blurToggle, mosaicEnabled && styles.blurToggleActive]}
+                onPress={() => setMosaicEnabled(!mosaicEnabled)}
+              >
+                <Text style={styles.blurToggleText}>Blur</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </ImageBackground>
@@ -350,7 +285,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
   content: {
     flex: 1,
@@ -364,25 +299,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  errorIcon: {
-    fontSize: 60,
-    marginBottom: 20,
-  },
   errorText: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#fff',
+    color: Colors.white,
     marginBottom: 24,
     textAlign: 'center',
   },
   errorButton: {
-    backgroundColor: '#E91E63',
+    backgroundColor: Colors.pink,
     paddingHorizontal: 32,
     paddingVertical: 14,
-    borderRadius: 25,
+    borderRadius: 16,
   },
   errorButtonText: {
-    color: '#fff',
+    color: Colors.white,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -390,267 +321,157 @@ const styles = StyleSheet.create({
   // Header
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 16,
-  },
-  headerLabel: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontWeight: '500',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
+    paddingBottom: 20,
   },
   exitButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 107, 107, 0.9)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   exitButtonText: {
-    color: '#fff',
-    fontSize: 18,
+    color: Colors.white,
+    fontSize: 20,
     fontWeight: 'bold',
   },
-  
-  // Room Code Card
-  roomCodeCard: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  roomCodeInner: {
+  roomCodeContainer: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
   },
   roomCodeLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 8,
-    letterSpacing: 2,
-  },
-  roomCodeText: {
-    fontSize: 52,
-    fontWeight: 'bold',
-    color: '#fff',
-    letterSpacing: 12,
-    fontFamily: 'monospace',
-    textShadowColor: 'rgba(233, 30, 99, 0.5)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
-  },
-  roomCodeSubtext: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.6)',
-    marginTop: 8,
-  },
-  roundsBadge: {
-    backgroundColor: 'rgba(233, 30, 99, 0.9)',
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  roundsBadgeText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  
-  // Players Card
-  playersCard: {
-    flex: 1,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    overflow: 'hidden',
-  },
-  playersHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  playersTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  playerCountBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  playerCountText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  playersList: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  playerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  playerItemLast: {
-    borderBottomWidth: 0,
-  },
-  playerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E91E63',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  playerAvatarText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  playerInfo: {
-    flex: 1,
-  },
-  playerNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  playerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  hostBadge: {
-    backgroundColor: 'rgba(255, 193, 7, 0.3)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  hostBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FFD54F',
-  },
-  playerStatus: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
-  playerScore: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
-  
-  // Actions
-  actionsContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-    gap: 10,
-  },
-  photoStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
+    fontSize: 12,
+    color: Colors.textLight,
+    fontWeight: '500',
     marginBottom: 4,
   },
-  photoStatusIcon: {
-    fontSize: 18,
-    marginRight: 8,
+  roomCodeText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: Colors.white,
+    letterSpacing: 6,
   },
-  photoStatusText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
+  headerSpacer: {
+    width: 44,
   },
-  actionButton: {
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
+  
+  // Players Area
+  playersArea: {
+    flex: 1,
+    position: 'relative',
+    marginHorizontal: 20,
+  },
+  playerBubble: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 8,
   },
-  actionButtonText: {
-    color: '#fff',
+  playerInitial: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: Colors.white,
+  },
+  playerName: {
+    fontSize: 10,
+    color: Colors.white,
+    fontWeight: '600',
+    marginTop: 2,
+    maxWidth: 70,
+    textAlign: 'center',
+  },
+  hostIndicator: {
+    position: 'absolute',
+    top: -8,
+    backgroundColor: Colors.cyan,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  hostText: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    color: Colors.white,
+  },
+  readyIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+  
+  // Bottom Actions
+  bottomContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    gap: 12,
+  },
+  choosePicturesButton: {
+    backgroundColor: Colors.blue,
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  choosePicturesText: {
+    color: Colors.white,
     fontSize: 16,
     fontWeight: '700',
   },
-  choosePicturesButton: {
-    backgroundColor: '#2196F3',
+  startRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  debugButton: {
-    backgroundColor: '#FF9800',
+  startButton: {
+    flex: 1,
+    backgroundColor: Colors.pink,
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: Colors.pink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  startGameButton: {
-    backgroundColor: '#E91E63',
-    paddingVertical: 22,
-    marginTop: 4,
-    shadowColor: '#E91E63',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 10,
+  startButtonText: {
+    color: Colors.white,
+    fontSize: 18,
+    fontWeight: '800',
   },
   buttonDisabled: {
     backgroundColor: 'rgba(150, 150, 150, 0.6)',
     shadowOpacity: 0,
     elevation: 0,
   },
-  startButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  waitingCard: {
-    flexDirection: 'row',
+  blurToggle: {
+    width: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  waitingIcon: {
-    fontSize: 20,
-    marginRight: 10,
+  blurToggleActive: {
+    backgroundColor: Colors.purple,
   },
-  waitingText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
+  blurToggleText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
