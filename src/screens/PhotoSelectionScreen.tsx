@@ -12,10 +12,12 @@ import {
   Platform,
   ImageBackground,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import ImageLabeling from '@react-native-ml-kit/image-labeling';
 import Colors from '../theme/colors';
+import { adService } from '../services/AdService';
 
 interface PhotoSelectionScreenProps {
   route: any;
@@ -149,7 +151,18 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
     }
   };
 
+  const [isLoadingAd, setIsLoadingAd] = useState(false);
+
   const loadPhotosWithPeople = async () => {
+    // Show ad first
+    setIsLoadingAd(true);
+    try {
+      await adService.showRewardedAd();
+    } catch (error) {
+      console.log('Ad error:', error);
+    }
+    setIsLoadingAd(false);
+    
     setLoading(true);
     setLoadingProgress(0);
     setLoadingMessage('Scanning for people...');
@@ -353,8 +366,20 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
                 </TouchableOpacity>
               </View>
               
-              <TouchableOpacity style={styles.peopleButton} onPress={loadPhotosWithPeople} activeOpacity={0.8}>
-                <Text style={styles.buttonText}>Find Photos with People</Text>
+              <TouchableOpacity 
+                style={styles.peopleButton} 
+                onPress={loadPhotosWithPeople} 
+                activeOpacity={0.8}
+                disabled={isLoadingAd}
+              >
+                {isLoadingAd ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <>
+                    <Text style={styles.buttonText}>Find Photos with People</Text>
+                    <Text style={styles.adBadge}>🎬</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </>
@@ -468,6 +493,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  adBadge: {
+    fontSize: 14,
   },
   yesButton: {
     flex: 1,

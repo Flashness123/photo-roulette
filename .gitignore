@@ -77,6 +77,9 @@ yarn-error.log
 src/config/production.ts
 src/config/secrets.ts
 
+# Sensitive files - DO NOT COMMIT
+android/gradle.properties
+
 # Backend
 backend/node_modules/
 backend/.env

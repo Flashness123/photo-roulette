@@ -1,4 +1,7 @@
 {
-  "name": "PhotoRoulette",
-  "displayName": "PhotoRoulette"
+  "name": "PicRoulette",
+  "displayName": "Pic Roulette",
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3077343286183537~3751908633"
+  }
 }

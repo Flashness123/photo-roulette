@@ -10,10 +10,12 @@ import {
   Dimensions,
   Switch,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { GameRoom, Player, GameType } from '../types/game';
 import Colors from '../theme/colors';
+import { adService } from '../services/AdService';
 
 const { width, height } = Dimensions.get('window');
 const backgroundImage = require('../assets/background.png');
@@ -59,6 +61,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
   const [numRounds, setNumRounds] = useState(initialNumRounds || 20);
   const [gameType, setGameType] = useState<GameType>(initialGameType || 'photo');
   const [mosaicEnabled, setMosaicEnabled] = useState(true);
+  const [isLoadingAd, setIsLoadingAd] = useState(false);
   
   const isVideoMode = gameType === 'video';
   const mediaLabel = isVideoMode ? 'videos' : 'photos';
@@ -267,14 +270,14 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
 
         {/* Bottom Actions */}
         <View style={styles.bottomContainer}>
-          {/* Choose Pictures Button */}
+          {/* Choose Pictures/Videos Button */}
           <TouchableOpacity
             style={styles.choosePicturesButton}
             onPress={handleChoosePictures}
             activeOpacity={0.8}
           >
             <Text style={styles.choosePicturesText}>
-              {photosSelected ? 'Change Selection' : 'Choose Pictures'}
+              {photosSelected ? 'Change Selection' : isVideoMode ? 'Choose Videos' : 'Choose Pictures'}
             </Text>
           </TouchableOpacity>
 
@@ -296,14 +299,33 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
           {/* Blur Toggle Slider */}
           {!isVideoMode && (
             <View style={styles.blurToggleContainer}>
-              <Text style={styles.blurToggleLabel}>Blurry Pictures</Text>
-              <Switch
-                value={mosaicEnabled}
-                onValueChange={setMosaicEnabled}
-                trackColor={{ false: 'rgba(255, 255, 255, 0.3)', true: Colors.purple }}
-                thumbColor={mosaicEnabled ? Colors.pink : Colors.white}
-                ios_backgroundColor="rgba(255, 255, 255, 0.3)"
-              />
+              <View style={styles.blurToggleLabelRow}>
+                <Text style={styles.blurToggleLabel}>Blurry Pictures</Text>
+                <Text style={styles.adBadgeSmall}>🎬</Text>
+              </View>
+              {isLoadingAd ? (
+                <ActivityIndicator color={Colors.pink} size="small" />
+              ) : (
+                <Switch
+                  value={mosaicEnabled}
+                  onValueChange={async (value) => {
+                    if (value && !mosaicEnabled) {
+                      // Show ad when enabling blur
+                      setIsLoadingAd(true);
+                      try {
+                        await adService.showRewardedAd();
+                      } catch (error) {
+                        console.log('Ad error:', error);
+                      }
+                      setIsLoadingAd(false);
+                    }
+                    setMosaicEnabled(value);
+                  }}
+                  trackColor={{ false: 'rgba(255, 255, 255, 0.3)', true: Colors.purple }}
+                  thumbColor={mosaicEnabled ? Colors.pink : Colors.white}
+                  ios_backgroundColor="rgba(255, 255, 255, 0.3)"
+                />
+              )}
             </View>
           )}
         </View>
@@ -525,9 +547,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 12,
   },
+  blurToggleLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   blurToggleLabel: {
     color: Colors.white,
     fontSize: 14,
     fontWeight: '600',
+  },
+  adBadgeSmall: {
+    fontSize: 12,
   },
 });

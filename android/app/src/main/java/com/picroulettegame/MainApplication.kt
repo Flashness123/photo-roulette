@@ -1,4 +1,4 @@
-package com.photoroulette
+package com.picroulettegame
 
 import android.app.Application
 import com.facebook.react.PackageList

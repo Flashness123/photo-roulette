@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,11 @@ import {
   Dimensions,
   ImageBackground,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { Player } from '../types/game';
 import Colors from '../theme/colors';
+import { adService } from '../services/AdService';
 
 interface FinalResultsScreenProps {
   route: any;
@@ -44,8 +46,17 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
   // Format time in seconds with 1 decimal
   const formatTime = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
-  // Handle play again - go back to room screen
-  const handlePlayAgain = () => {
+  const [isLoadingAd, setIsLoadingAd] = useState(false);
+
+  // Handle play again - show ad first, then go back to room screen
+  const handlePlayAgain = async () => {
+    setIsLoadingAd(true);
+    try {
+      await adService.showRewardedAd();
+    } catch (error) {
+      console.log('Ad error:', error);
+    }
+    setIsLoadingAd(false);
     // Navigate back to room to start a new game
     navigation.replace('Room', { room, player });
   };
@@ -173,8 +184,16 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
           style={styles.playAgainButton}
           onPress={handlePlayAgain}
           activeOpacity={0.8}
+          disabled={isLoadingAd}
         >
-          <Text style={styles.playAgainButtonText}>Play Again</Text>
+          {isLoadingAd ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <>
+              <Text style={styles.playAgainButtonText}>Play Again</Text>
+              <Text style={styles.adBadge}>🎬</Text>
+            </>
+          )}
         </TouchableOpacity>
         
         {/* Back to Home Button */}
@@ -433,12 +452,18 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
     marginBottom: 12,
+    gap: 8,
   },
   playAgainButtonText: {
     color: Colors.white,
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  adBadge: {
+    fontSize: 14,
   },
   backButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
