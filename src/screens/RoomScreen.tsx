@@ -154,6 +154,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
 
     socket.on('playerLeft', (data: any) => {
       console.log('Player left event received:', data);
+      console.log('Current players before fetch:', room.players.map(p => p.name));
       // Immediately fetch updated room data
       fetchRoomData();
     });
@@ -164,7 +165,11 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     });
 
     socket.on('error', (error: any) => {
-      console.error('Socket error:', error);
+      console.error('Socket error:', error.message || error);
+      // Show alert for game start errors
+      if (error.message) {
+        Alert.alert('Error', error.message);
+      }
     });
 
     socket.on('disconnect', () => {
@@ -188,10 +193,12 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
 
   const fetchRoomData = async () => {
     try {
+      console.log('Fetching room data for:', room.id);
       const response = await fetch(
         `https://photo-roulette-production-b12d.up.railway.app/api/rooms/${room.id}`
       );
       const data = await response.json();
+      console.log('Room data received, players count:', data.room?.players?.length);
       if (data.room) {
         const transformedRoom = {
           ...data.room,
@@ -201,6 +208,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
             photosLocked: p.photos_locked,
           })),
         };
+        console.log('Setting room with players:', transformedRoom.players.map((p: any) => p.name));
         setRoom(transformedRoom);
       }
     } catch (error) {

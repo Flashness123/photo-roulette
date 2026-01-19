@@ -557,13 +557,66 @@ io.on('connection', (socket) => {
     const { roomId, playerId } = data;
     console.log('startGame received:', { roomId, playerId, activeRoomsSize: activeRooms.size });
     
-    const room = activeRooms.get(roomId);
-    console.log('Room found:', room ? 'yes' : 'no', room ? `hostId: ${room.hostId}, players: ${room.players.size}` : '');
+    let room = activeRooms.get(roomId);
+    console.log('Room found in activeRooms:', room ? 'yes' : 'no');
     
-    if (!room || room.hostId !== playerId) {
-      console.log('Validation failed: room exists:', !!room, 'host match:', room?.hostId === playerId);
-      socket.emit('error', { message: 'Only the host can start the game' });
+    // If room not in memory, try to load from database
+    if (!room) {
+      console.log('Room not in activeRooms, fetching from database...');
+      const { data: roomData } = await supabase
+        .from('game_rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+      
+      const { data: players } = await supabase
+        .from('players')
+        .select('*')
+        .eq('room_id', roomId);
+      
+      if (roomData && players) {
+        room = {
+          roomId: roomData.id,
+          code: roomData.code,
+          hostId: roomData.host_id,
+          players: new Map(players.map(p => [p.id, p])),
+          status: roomData.status
+        };
+        activeRooms.set(roomId, room);
+        console.log('Room loaded from database, hostId:', room.hostId);
+      }
+    }
+    
+    if (!room) {
+      console.log('Room still not found after DB fetch');
+      socket.emit('error', { message: 'Room not found' });
       return;
+    }
+    
+    console.log('Checking host: room.hostId =', room.hostId, ', playerId =', playerId, ', match =', room.hostId === playerId);
+    
+    if (room.hostId !== playerId) {
+      console.log('Host mismatch! Checking database for correct host_id...');
+      // Double-check from database
+      const { data: roomData } = await supabase
+        .from('game_rooms')
+        .select('host_id')
+        .eq('id', roomId)
+        .single();
+      
+      if (roomData) {
+        console.log('DB host_id:', roomData.host_id);
+        // Update our cached room with correct host
+        room.hostId = roomData.host_id;
+        
+        if (roomData.host_id !== playerId) {
+          socket.emit('error', { message: 'Only the host can start the game' });
+          return;
+        }
+      } else {
+        socket.emit('error', { message: 'Only the host can start the game' });
+        return;
+      }
     }
 
     if (room.players.size < 1) {
