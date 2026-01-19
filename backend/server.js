@@ -240,11 +240,13 @@ app.post('/api/rooms/:roomId/leave', async (req, res) => {
     const { roomId } = req.params;
     const { playerId } = req.body;
 
+    console.log(`Player ${playerId} leaving room ${roomId}`);
+
     if (!playerId) {
       return res.status(400).json({ error: 'Player ID is required' });
     }
 
-    // Delete player from room
+    // Delete player from database
     const { error: deleteError } = await supabase
       .from('players')
       .delete()
@@ -252,8 +254,17 @@ app.post('/api/rooms/:roomId/leave', async (req, res) => {
       .eq('room_id', roomId);
 
     if (deleteError) {
-      console.error('Error removing player:', deleteError);
+      console.error('Error removing player from DB:', deleteError);
       return res.status(500).json({ error: 'Failed to remove player' });
+    }
+
+    console.log(`Player ${playerId} deleted from database`);
+
+    // Also remove from activeRooms Map
+    const room = activeRooms.get(roomId);
+    if (room) {
+      room.players.delete(playerId);
+      console.log(`Player ${playerId} removed from activeRooms, remaining: ${room.players.size}`);
     }
 
     // Check if room is now empty
@@ -268,9 +279,12 @@ app.post('/api/rooms/:roomId/leave', async (req, res) => {
         .from('game_rooms')
         .delete()
         .eq('id', roomId);
+      activeRooms.delete(roomId);
+      console.log(`Room ${roomId} deleted (empty)`);
     }
 
     // Notify other players via Socket.IO that someone left
+    console.log(`Emitting playerLeft to room:${roomId}`);
     io.to(`room:${roomId}`).emit('playerLeft', {
       playerId: playerId,
       roomId: roomId

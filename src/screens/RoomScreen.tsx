@@ -82,6 +82,13 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     }
   }, [params.selectedPhotos]);
 
+  // Use ref for photos so socket callback always has current value
+  const myPhotosRef = useRef<string[]>(initialPhotos || []);
+  
+  useEffect(() => {
+    myPhotosRef.current = myPhotos;
+  }, [myPhotos]);
+
   // Setup Socket.IO connection for real-time game start
   useEffect(() => {
     const socket = io('https://photo-roulette-production-b12d.up.railway.app', {
@@ -107,22 +114,22 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     // Listen for game start event - this is emitted by host
     socket.on('gameStarted', (data: any) => {
       console.log('Game started event received:', data);
-      console.log('My photos count:', myPhotos?.length || 0);
+      const currentPhotos = myPhotosRef.current;
+      console.log('My photos count:', currentPhotos?.length || 0);
       
       // Check if we have photos before navigating
-      if (!myPhotos || myPhotos.length === 0) {
+      if (!currentPhotos || currentPhotos.length === 0) {
         Alert.alert('Error', 'Please select photos before the game starts');
         return;
       }
       
       // Navigate to game screen for ALL players
-      if (isVideoMode) {
-        // Prepare video game data
-        const shuffledPhotos = myPhotos
-          .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
-          .sort(() => Math.random() - 0.5)
-          .slice(0, numRounds);
-        
+      const shuffledPhotos = currentPhotos
+        .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
+        .sort(() => Math.random() - 0.5)
+        .slice(0, numRounds);
+      
+      if (gameType === 'video') {
         navigation.replace('VideoGame', {
           room,
           player: currentPlayer,
@@ -131,12 +138,6 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
           gameType,
         });
       } else {
-        // Prepare photo game data
-        const shuffledPhotos = myPhotos
-          .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
-          .sort(() => Math.random() - 0.5)
-          .slice(0, numRounds);
-        
         navigation.replace('Game', {
           room,
           player: currentPlayer,
@@ -149,7 +150,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     });
 
     socket.on('playerLeft', (data: any) => {
-      console.log('Player left:', data);
+      console.log('Player left event received:', data);
       // Immediately fetch updated room data
       fetchRoomData();
     });
@@ -172,7 +173,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [room.id, currentPlayer.id]);
+  }, [room.id, currentPlayer.id, numRounds, gameType, mosaicEnabled, navigation, room, currentPlayer]);
 
   // Regular polling to update room data
   useEffect(() => {
