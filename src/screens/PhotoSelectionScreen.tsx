@@ -66,7 +66,8 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
   const requestPermission = async () => {
     if (Platform.OS === 'android') {
       try {
-        const granted = await PermissionsAndroid.request(
+        // Try newer permission first (Android 13+)
+        let granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
           {
             title: 'Photo Gallery Permission',
@@ -76,6 +77,20 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
             buttonPositive: 'OK',
           },
         );
+        
+        // If newer permission fails, try older permission
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+            {
+              title: 'Photo Gallery Permission',
+              message: 'Pic Roulette needs access to your photos.',
+              buttonNeutral: 'Ask Me Later',
+              buttonNegative: 'Cancel',
+              buttonPositive: 'OK',
+            },
+          );
+        }
         
         if (granted === PermissionsAndroid.RESULTS.GRANTED) {
           setHasPermission(true);

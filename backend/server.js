@@ -270,6 +270,12 @@ app.post('/api/rooms/:roomId/leave', async (req, res) => {
         .eq('id', roomId);
     }
 
+    // Notify other players via Socket.IO that someone left
+    io.to(`room:${roomId}`).emit('playerLeft', {
+      playerId: playerId,
+      roomId: roomId
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error leaving room:', error);
@@ -402,20 +408,33 @@ app.post('/api/rooms/join', async (req, res) => {
       return res.status(400).json({ error: 'Room is full' });
     }
 
-    // Add player to room
-    const { data: playerData, error: playerError } = await supabase
-      .from('players')
-      .insert({
-        room_id: roomData.id,
-        name: playerName,
-        is_host: false,
-      })
-      .select()
-      .single();
+    // Check if player with same name already exists in this room
+    const existingPlayer = existingPlayers?.find(p => p.name === playerName);
+    
+    let playerData;
+    if (existingPlayer) {
+      // Player is rejoining - use existing player record
+      playerData = existingPlayer;
+      console.log(`Player ${playerName} rejoining room ${roomData.id}`);
+    } else {
+      // New player - add to room
+      const { data: newPlayer, error: playerError } = await supabase
+        .from('players')
+        .insert({
+          room_id: roomData.id,
+          name: playerName,
+          is_host: false,
+        })
+        .select()
+        .single();
 
-    if (playerError) {
-      console.error('Error joining room:', playerError);
-      return res.status(500).json({ error: 'Failed to join room' });
+      if (playerError) {
+        console.error('Error joining room:', playerError);
+        return res.status(500).json({ error: 'Failed to join room' });
+      }
+      
+      playerData = newPlayer;
+      console.log(`New player ${playerName} joined room ${roomData.id}`);
     }
 
     // Update room in memory
@@ -489,46 +508,76 @@ io.on('connection', (socket) => {
   // Start game (host only)
   socket.on('startGame', async (data) => {
     const { roomId, playerId } = data;
+    console.log('startGame received:', { roomId, playerId, activeRoomsSize: activeRooms.size });
+    
     const room = activeRooms.get(roomId);
+    console.log('Room found:', room ? 'yes' : 'no', room ? `hostId: ${room.hostId}, players: ${room.players.size}` : '');
     
     if (!room || room.hostId !== playerId) {
+      console.log('Validation failed: room exists:', !!room, 'host match:', room?.hostId === playerId);
       socket.emit('error', { message: 'Only the host can start the game' });
       return;
     }
 
-    if (room.players.size < 2) {
-      socket.emit('error', { message: 'Need at least 2 players to start' });
+    if (room.players.size < 1) {
+      socket.emit('error', { message: 'Need at least 1 player to start' });
       return;
     }
 
     // Update room status in database
     await supabase
       .from('game_rooms')
-      .update({ status: 'photo_submission' })
+      .update({ status: 'in_game' })
       .eq('id', roomId);
 
-    room.status = 'photo_submission';
+    room.status = 'in_game';
     
-    // Notify all players
+    // Notify all players in the room - emit to the room
+    console.log('Broadcasting gameStarted to room:', roomId);
     io.to(`room:${roomId}`).emit('gameStarted', {
-      status: 'photo_submission',
-      round: 1,
-      prompt: 'Take a photo of something blue!'
+      status: 'in_game',
+      roomId: roomId,
+      round: 1
     });
   });
 
-  // Handle disconnection
-  socket.on('disconnect', () => {
+  // Handle disconnection - CRITICAL: remove player from database and room
+  socket.on('disconnect', async () => {
     console.log('Player disconnected:', socket.id);
     
     if (socket.roomId && socket.playerId) {
-      const room = activeRooms.get(socket.roomId);
-      if (room) {
-        // Notify other players
+      try {
+        // Remove player from database
+        await supabase
+          .from('players')
+          .delete()
+          .eq('id', socket.playerId)
+          .eq('room_id', socket.roomId);
+        
+        // Update room in memory
+        const room = activeRooms.get(socket.roomId);
+        if (room) {
+          room.players.delete(socket.playerId);
+          
+          // Check if room is now empty
+          if (room.players.size === 0) {
+            // Delete empty room from database
+            await supabase
+              .from('game_rooms')
+              .delete()
+              .eq('id', socket.roomId);
+            activeRooms.delete(socket.roomId);
+            console.log(`Room ${socket.roomId} deleted (empty)`);
+          }
+        }
+        
+        // Notify other players that someone left
         socket.to(`room:${socket.roomId}`).emit('playerLeft', {
           playerId: socket.playerId,
-          totalPlayers: room.players.size - 1
+          roomId: socket.roomId
         });
+      } catch (error) {
+        console.error('Error handling disconnect:', error);
       }
     }
   });
