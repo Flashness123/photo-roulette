@@ -493,10 +493,37 @@ io.on('connection', (socket) => {
     socket.roomId = roomId;
     socket.playerId = playerId;
     
-    console.log(`Player ${playerId} joined room ${roomId}`);
+    console.log(`Player ${playerId} joined socket room ${roomId}`);
+    
+    // Make sure room exists in activeRooms - fetch from database if needed
+    let room = activeRooms.get(roomId);
+    if (!room) {
+      // Room not in memory, fetch from database
+      const { data: roomData } = await supabase
+        .from('game_rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+      
+      const { data: players } = await supabase
+        .from('players')
+        .select('*')
+        .eq('room_id', roomId);
+      
+      if (roomData && players) {
+        room = {
+          roomId: roomData.id,
+          code: roomData.code,
+          hostId: roomData.host_id,
+          players: new Map(players.map(p => [p.id, p])),
+          status: roomData.status
+        };
+        activeRooms.set(roomId, room);
+        console.log(`Room ${roomId} loaded into activeRooms from database`);
+      }
+    }
     
     // Send current room state
-    const room = activeRooms.get(roomId);
     if (room) {
       socket.emit('roomState', {
         players: Array.from(room.players.values()),

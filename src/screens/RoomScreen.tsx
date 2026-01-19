@@ -107,38 +107,44 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     // Listen for game start event - this is emitted by host
     socket.on('gameStarted', (data: any) => {
       console.log('Game started event received:', data);
-      if (data.roomId === room.id) {
-        // Navigate to game screen for ALL players
-        if (isVideoMode) {
-          // Prepare video game data
-          const shuffledPhotos = myPhotos
-            .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
-            .sort(() => Math.random() - 0.5)
-            .slice(0, numRounds);
-          
-          navigation.replace('VideoGame', {
-            room,
-            player: currentPlayer,
-            allPhotos: shuffledPhotos,
-            numRounds,
-            gameType,
-          });
-        } else {
-          // Prepare photo game data
-          const shuffledPhotos = myPhotos
-            .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
-            .sort(() => Math.random() - 0.5)
-            .slice(0, numRounds);
-          
-          navigation.replace('Game', {
-            room,
-            player: currentPlayer,
-            allPhotos: shuffledPhotos,
-            numRounds,
-            gameType,
-            mosaicEnabled,
-          });
-        }
+      console.log('My photos count:', myPhotos?.length || 0);
+      
+      // Check if we have photos before navigating
+      if (!myPhotos || myPhotos.length === 0) {
+        Alert.alert('Error', 'Please select photos before the game starts');
+        return;
+      }
+      
+      // Navigate to game screen for ALL players
+      if (isVideoMode) {
+        // Prepare video game data
+        const shuffledPhotos = myPhotos
+          .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
+          .sort(() => Math.random() - 0.5)
+          .slice(0, numRounds);
+        
+        navigation.replace('VideoGame', {
+          room,
+          player: currentPlayer,
+          allPhotos: shuffledPhotos,
+          numRounds,
+          gameType,
+        });
+      } else {
+        // Prepare photo game data
+        const shuffledPhotos = myPhotos
+          .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
+          .sort(() => Math.random() - 0.5)
+          .slice(0, numRounds);
+        
+        navigation.replace('Game', {
+          room,
+          player: currentPlayer,
+          allPhotos: shuffledPhotos,
+          numRounds,
+          gameType,
+          mosaicEnabled,
+        });
       }
     });
 
