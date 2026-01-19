@@ -546,6 +546,12 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle voluntary leave (before disconnect)
+  socket.on('leaveRoom', () => {
+    console.log('Player leaving voluntarily:', socket.playerId);
+    socket.leftVoluntarily = true;
+  });
+
   // Start game (host only)
   socket.on('startGame', async (data) => {
     const { roomId, playerId } = data;
@@ -624,17 +630,38 @@ io.on('connection', (socket) => {
   });
 
   // Handle disconnection - CRITICAL: remove player from database and room
+  // This handles crashes/unexpected disconnects. Voluntary leaves are handled by /leave endpoint.
   socket.on('disconnect', async () => {
-    console.log('Player disconnected:', socket.id);
+    console.log('Player disconnected:', socket.id, 'leftVoluntarily:', socket.leftVoluntarily);
+    
+    // Skip if player already left voluntarily (handled by /leave endpoint)
+    if (socket.leftVoluntarily) {
+      console.log('Player left voluntarily, skipping disconnect cleanup');
+      return;
+    }
     
     if (socket.roomId && socket.playerId) {
       try {
+        // Check if player still exists in database (might have been deleted by /leave)
+        const { data: player } = await supabase
+          .from('players')
+          .select('id')
+          .eq('id', socket.playerId)
+          .single();
+        
+        if (!player) {
+          console.log('Player already removed from database, skipping');
+          return;
+        }
+        
         // Remove player from database
         await supabase
           .from('players')
           .delete()
           .eq('id', socket.playerId)
           .eq('room_id', socket.roomId);
+        
+        console.log('Player removed from database due to disconnect');
         
         // Update room in memory
         const room = activeRooms.get(socket.roomId);

@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 import { config } from '../config';
 import RNFS from 'react-native-fs';
-import { decode } from 'base64-arraybuffer';
 
 const SUPABASE_URL = config.supabase.url;
 const SUPABASE_ANON_KEY = config.supabase.anonKey;
@@ -15,7 +14,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-// Upload a photo to Supabase storage and record it in the photos table
+// Upload a photo - stores as base64 data URL in the database
+// (simpler than setting up Supabase storage buckets)
 export async function uploadPhoto(
   localUri: string,
   roomId: string,
@@ -23,59 +23,44 @@ export async function uploadPhoto(
   round: number = 1
 ): Promise<{ url: string; photoId: string } | null> {
   try {
-    // Generate unique filename
-    const timestamp = Date.now();
-    const randomId = Math.random().toString(36).substring(7);
-    const fileName = `${roomId}/${playerId}/${timestamp}_${randomId}.jpg`;
-
     // Read the file as base64
     let base64Data: string;
-    if (localUri.startsWith('content://') || localUri.startsWith('file://')) {
-      base64Data = await RNFS.readFile(localUri.replace('file://', ''), 'base64');
-    } else {
-      base64Data = await RNFS.readFile(localUri, 'base64');
+    let readPath = localUri;
+    
+    // Handle different URI formats
+    if (localUri.startsWith('file://')) {
+      readPath = localUri.replace('file://', '');
+    } else if (localUri.startsWith('content://')) {
+      // For content:// URIs, RNFS can read them directly
+      readPath = localUri;
     }
+    
+    console.log('Reading file from:', readPath);
+    base64Data = await RNFS.readFile(readPath, 'base64');
+    console.log('Base64 length:', base64Data.length);
 
-    // Upload to Supabase storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('game-photos')
-      .upload(fileName, decode(base64Data), {
-        contentType: 'image/jpeg',
-        upsert: false,
-      });
+    // Create a data URL (this will be stored in the database)
+    const dataUrl = `data:image/jpeg;base64,${base64Data}`;
 
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      return null;
-    }
-
-    // Get the public URL
-    const { data: urlData } = supabase.storage
-      .from('game-photos')
-      .getPublicUrl(fileName);
-
-    const publicUrl = urlData.publicUrl;
-
-    // Insert record into photos table
+    // Insert record into photos table with base64 data URL
     const { data: photoRecord, error: dbError } = await supabase
       .from('photos')
       .insert({
         room_id: roomId,
         player_id: playerId,
-        url: publicUrl,
+        url: dataUrl,
         round: round,
       })
       .select()
       .single();
 
     if (dbError) {
-      console.error('DB error:', dbError);
-      // Try to delete the uploaded file if DB insert fails
-      await supabase.storage.from('game-photos').remove([fileName]);
+      console.error('DB error inserting photo:', dbError);
       return null;
     }
 
-    return { url: publicUrl, photoId: photoRecord.id };
+    console.log('Photo inserted successfully:', photoRecord.id);
+    return { url: dataUrl, photoId: photoRecord.id };
   } catch (error) {
     console.error('Error uploading photo:', error);
     return null;

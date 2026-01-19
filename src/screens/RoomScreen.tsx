@@ -219,13 +219,14 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
           style: 'destructive',
           onPress: async () => {
             try {
-              // Disconnect socket first
+              // Tell the server we're leaving voluntarily (prevents double-delete on disconnect)
               if (socketRef.current) {
-                socketRef.current.disconnect();
+                socketRef.current.emit('leaveRoom');
               }
               
               // Call API to remove from database
-              await fetch(
+              // This also emits playerLeft to other players
+              const response = await fetch(
                 `https://photo-roulette-production-b12d.up.railway.app/api/rooms/${room.id}/leave`,
                 {
                   method: 'POST',
@@ -233,6 +234,12 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
                   body: JSON.stringify({ playerId: currentPlayer.id }),
                 }
               );
+              console.log('Leave response:', response.status);
+              
+              // THEN disconnect socket (after notification sent)
+              if (socketRef.current) {
+                socketRef.current.disconnect();
+              }
             } catch (error) {
               console.error('Error leaving room:', error);
             }
