@@ -565,6 +565,45 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Fetch all photos for this room from the database
+    const { data: photos, error: photosError } = await supabase
+      .from('photos')
+      .select(`
+        id,
+        url,
+        player_id,
+        players!inner(name)
+      `)
+      .eq('room_id', roomId);
+
+    if (photosError) {
+      console.error('Error fetching photos:', photosError);
+      socket.emit('error', { message: 'Failed to fetch photos' });
+      return;
+    }
+
+    if (!photos || photos.length === 0) {
+      socket.emit('error', { message: 'No photos uploaded yet' });
+      return;
+    }
+
+    // Shuffle photos deterministically using Fisher-Yates
+    // Create shuffled array that all clients will use
+    const shuffledPhotos = photos.map(photo => ({
+      id: photo.id,
+      url: photo.url,
+      ownerId: photo.player_id,
+      ownerName: photo.players?.name || 'Unknown'
+    }));
+    
+    // Fisher-Yates shuffle
+    for (let i = shuffledPhotos.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledPhotos[i], shuffledPhotos[j]] = [shuffledPhotos[j], shuffledPhotos[i]];
+    }
+
+    console.log(`Shuffled ${shuffledPhotos.length} photos for game`);
+
     // Update room status in database
     await supabase
       .from('game_rooms')
@@ -572,13 +611,15 @@ io.on('connection', (socket) => {
       .eq('id', roomId);
 
     room.status = 'in_game';
+    room.shuffledPhotos = shuffledPhotos; // Store for reference
     
-    // Notify all players in the room - emit to the room
+    // Notify all players in the room with the SAME shuffled photos
     console.log('Broadcasting gameStarted to room:', roomId);
     io.to(`room:${roomId}`).emit('gameStarted', {
       status: 'in_game',
       roomId: roomId,
-      round: 1
+      round: 1,
+      photos: shuffledPhotos // All players get the same shuffled order
     });
   });
 

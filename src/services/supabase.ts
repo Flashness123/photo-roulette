@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 import { config } from '../config';
+import RNFS from 'react-native-fs';
+import { decode } from 'base64-arraybuffer';
 
 const SUPABASE_URL = config.supabase.url;
 const SUPABASE_ANON_KEY = config.supabase.anonKey;
@@ -12,6 +14,108 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: false,
   },
 });
+
+// Upload a photo to Supabase storage and record it in the photos table
+export async function uploadPhoto(
+  localUri: string,
+  roomId: string,
+  playerId: string,
+  round: number = 1
+): Promise<{ url: string; photoId: string } | null> {
+  try {
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(7);
+    const fileName = `${roomId}/${playerId}/${timestamp}_${randomId}.jpg`;
+
+    // Read the file as base64
+    let base64Data: string;
+    if (localUri.startsWith('content://') || localUri.startsWith('file://')) {
+      base64Data = await RNFS.readFile(localUri.replace('file://', ''), 'base64');
+    } else {
+      base64Data = await RNFS.readFile(localUri, 'base64');
+    }
+
+    // Upload to Supabase storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('game-photos')
+      .upload(fileName, decode(base64Data), {
+        contentType: 'image/jpeg',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      return null;
+    }
+
+    // Get the public URL
+    const { data: urlData } = supabase.storage
+      .from('game-photos')
+      .getPublicUrl(fileName);
+
+    const publicUrl = urlData.publicUrl;
+
+    // Insert record into photos table
+    const { data: photoRecord, error: dbError } = await supabase
+      .from('photos')
+      .insert({
+        room_id: roomId,
+        player_id: playerId,
+        url: publicUrl,
+        round: round,
+      })
+      .select()
+      .single();
+
+    if (dbError) {
+      console.error('DB error:', dbError);
+      // Try to delete the uploaded file if DB insert fails
+      await supabase.storage.from('game-photos').remove([fileName]);
+      return null;
+    }
+
+    return { url: publicUrl, photoId: photoRecord.id };
+  } catch (error) {
+    console.error('Error uploading photo:', error);
+    return null;
+  }
+}
+
+// Get all photos for a room
+export async function getRoomPhotos(roomId: string): Promise<Array<{
+  id: string;
+  url: string;
+  playerId: string;
+  playerName?: string;
+}>> {
+  try {
+    const { data, error } = await supabase
+      .from('photos')
+      .select(`
+        id,
+        url,
+        player_id,
+        players!inner(name)
+      `)
+      .eq('room_id', roomId);
+
+    if (error) {
+      console.error('Error fetching room photos:', error);
+      return [];
+    }
+
+    return data.map((photo: any) => ({
+      id: photo.id,
+      url: photo.url,
+      playerId: photo.player_id,
+      playerName: photo.players?.name,
+    }));
+  } catch (error) {
+    console.error('Error getting room photos:', error);
+    return [];
+  }
+}
 
 // Database table schemas for Supabase
 /*

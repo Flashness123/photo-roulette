@@ -112,28 +112,31 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     });
 
     // Listen for game start event - this is emitted by host
-    socket.on('gameStarted', (data: any) => {
+    socket.on('gameStarted', async (data: any) => {
       console.log('Game started event received:', data);
-      const currentPhotos = myPhotosRef.current;
-      console.log('My photos count:', currentPhotos?.length || 0);
       
-      // Check if we have photos before navigating
-      if (!currentPhotos || currentPhotos.length === 0) {
-        Alert.alert('Error', 'Please select photos before the game starts');
+      // Use photos from server (already shuffled, same for all players)
+      const serverPhotos = data.photos;
+      
+      if (!serverPhotos || serverPhotos.length === 0) {
+        Alert.alert('Error', 'No photos available. All players need to upload photos first.');
         return;
       }
       
-      // Navigate to game screen for ALL players
-      const shuffledPhotos = currentPhotos
-        .map(uri => ({ photoUri: uri, ownerId: currentPlayer.id, ownerName: currentPlayer.name }))
-        .sort(() => Math.random() - 0.5)
-        .slice(0, numRounds);
+      console.log('Received shared photos from server:', serverPhotos.length);
+      
+      // Transform photos to game format (already shuffled by server)
+      const gamePhotos = serverPhotos.map((photo: any) => ({
+        photoUri: photo.url,
+        ownerId: photo.ownerId,
+        ownerName: photo.ownerName || 'Unknown',
+      })).slice(0, numRounds);
       
       if (gameType === 'video') {
         navigation.replace('VideoGame', {
           room,
           player: currentPlayer,
-          allPhotos: shuffledPhotos,
+          allPhotos: gamePhotos,
           numRounds,
           gameType,
         });
@@ -141,7 +144,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
         navigation.replace('Game', {
           room,
           player: currentPlayer,
-          allPhotos: shuffledPhotos,
+          allPhotos: gamePhotos,
           numRounds,
           gameType,
           mosaicEnabled,
@@ -248,48 +251,25 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     }
   };
 
-  const handleStartGame = () => {
+  const handleStartGame = async () => {
     if (!myPhotos || myPhotos.length < requiredPhotos) {
       Alert.alert('Select Media First', `Please choose your ${requiredPhotos} ${mediaLabel} before starting.`);
       return;
     }
 
     // Emit socket event to notify all players
+    // The gameStarted event handler will handle navigation for all players (including host)
     if (socketRef.current) {
+      console.log('Start game - emitting startGame event');
       socketRef.current.emit('startGame', {
         roomId: room.id,
         playerId: currentPlayer.id,
       });
       console.log('Start game event emitted');
+      // Navigation will be handled by the gameStarted event listener
     } else {
-      console.warn('Socket not connected, falling back to direct navigation');
-      // Fallback if socket not ready
-      const allMedia = myPhotos.map((uri) => ({
-        photoUri: uri,
-        ownerId: currentPlayer.id,
-        ownerName: currentPlayer.name,
-      }));
-
-      const shuffled = allMedia.sort(() => Math.random() - 0.5).slice(0, numRounds);
-
-      if (isVideoMode) {
-        navigation.navigate('VideoGame', {
-          room,
-          player: currentPlayer,
-          allPhotos: shuffled,
-          numRounds,
-          gameType,
-        });
-      } else {
-        navigation.navigate('Game', {
-          room,
-          player: currentPlayer,
-          allPhotos: shuffled,
-          numRounds,
-          gameType,
-          mosaicEnabled,
-        });
-      }
+      console.warn('Socket not connected, cannot start multiplayer game');
+      Alert.alert('Connection Error', 'Not connected to server. Please wait and try again.');
     }
   };
 

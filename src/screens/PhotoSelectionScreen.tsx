@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import ImageLabeling from '@react-native-ml-kit/image-labeling';
+import { uploadPhoto } from '../services/supabase';
 import Colors from '../theme/colors';
 import { adService } from '../services/AdService';
 
@@ -265,9 +266,37 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
       return;
     }
 
+    setLoading(true);
+    setLoadingMessage('Uploading photos...');
+    
     try {
       const { room, player, numRounds } = route.params;
       
+      // Upload all photos to Supabase
+      let uploadedCount = 0;
+      const uploadedPhotos: { url: string; photoId: string }[] = [];
+      
+      for (let i = 0; i < selectedPhotos.length; i++) {
+        const photo = selectedPhotos[i];
+        setLoadingProgress(Math.round((i / selectedPhotos.length) * 100));
+        setLoadingMessage(`Uploading photo ${i + 1}/${selectedPhotos.length}...`);
+        
+        const result = await uploadPhoto(photo.uri, room.id, player.id, 1);
+        if (result) {
+          uploadedPhotos.push(result);
+          uploadedCount++;
+        }
+      }
+      
+      if (uploadedCount === 0) {
+        Alert.alert('Error', 'Failed to upload photos. Please try again.');
+        setLoading(false);
+        return;
+      }
+      
+      setLoadingMessage('Finalizing...');
+      
+      // Lock photos on backend
       const response = await fetch(
         `https://photo-roulette-production-b12d.up.railway.app/api/rooms/${room.id}/lock-photos`,
         {
@@ -275,7 +304,7 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             playerId: player.id,
-            photoCount: selectedPhotos.length 
+            photoCount: uploadedCount 
           }),
         }
       );
@@ -284,14 +313,19 @@ export const PhotoSelectionScreen: React.FC<PhotoSelectionScreenProps> = ({
         navigation.navigate('Room', {
           room,
           player,
-          selectedPhotos: selectedPhotos.map(p => p.uri),
+          selectedPhotos: uploadedPhotos.map(p => p.url), // Now using uploaded URLs
           numRounds,
+          photosUploaded: true,
         });
       } else {
         Alert.alert('Error', 'Failed to lock photos.');
       }
     } catch (error) {
-      Alert.alert('Error', 'Connection error.');
+      console.error('Upload error:', error);
+      Alert.alert('Error', 'Connection error. Please try again.');
+    } finally {
+      setLoading(false);
+      setLoadingProgress(0);
     }
   };
 
