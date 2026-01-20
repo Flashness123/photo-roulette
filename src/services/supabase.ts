@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 import { config } from '../config';
 import RNFS from 'react-native-fs';
+import ImageResizer from '@bam.tech/react-native-image-resizer';
 
 const SUPABASE_URL = config.supabase.url;
 const SUPABASE_ANON_KEY = config.supabase.anonKey;
@@ -14,8 +15,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-// Upload a photo - stores as base64 data URL in the database
-// (simpler than setting up Supabase storage buckets)
+// Upload a photo - resizes and stores as base64 data URL in the database
 export async function uploadPhoto(
   localUri: string,
   roomId: string,
@@ -23,21 +23,32 @@ export async function uploadPhoto(
   round: number = 1
 ): Promise<{ url: string; photoId: string } | null> {
   try {
-    // Read the file as base64
-    let base64Data: string;
-    let readPath = localUri;
+    console.log('Starting photo upload, original URI:', localUri);
     
-    // Handle different URI formats
-    if (localUri.startsWith('file://')) {
-      readPath = localUri.replace('file://', '');
-    } else if (localUri.startsWith('content://')) {
-      // For content:// URIs, RNFS can read them directly
-      readPath = localUri;
+    // Resize the image to a reasonable size (400x400 max, with high compression)
+    // This reduces file size from megabytes to ~20-50KB
+    const resized = await ImageResizer.createResizedImage(
+      localUri,
+      400, // max width
+      400, // max height
+      'JPEG',
+      50, // quality (0-100)
+      0, // rotation
+      undefined, // output path (undefined = temp)
+      false, // keep meta
+      { mode: 'contain', onlyScaleDown: true }
+    );
+    
+    console.log('Resized image path:', resized.uri);
+    
+    // Read the resized file as base64
+    let readPath = resized.uri;
+    if (readPath.startsWith('file://')) {
+      readPath = readPath.replace('file://', '');
     }
     
-    console.log('Reading file from:', readPath);
-    base64Data = await RNFS.readFile(readPath, 'base64');
-    console.log('Base64 length:', base64Data.length);
+    const base64Data = await RNFS.readFile(readPath, 'base64');
+    console.log('Compressed base64 length:', base64Data.length, '(~', Math.round(base64Data.length / 1024), 'KB)');
 
     // Create a data URL (this will be stored in the database)
     const dataUrl = `data:image/jpeg;base64,${base64Data}`;
