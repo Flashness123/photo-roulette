@@ -552,6 +552,28 @@ io.on('connection', (socket) => {
     socket.leftVoluntarily = true;
   });
 
+  // Join game (for in-game score sync)
+  socket.on('joinGame', (data) => {
+    const { roomId, playerId } = data;
+    console.log(`Player ${playerId} joined game socket for room ${roomId}`);
+    socket.join(`game:${roomId}`);
+    socket.gameRoomId = roomId;
+    socket.playerId = playerId;
+  });
+
+  // Player scored - broadcast to other players in the game
+  socket.on('playerScored', (data) => {
+    const { roomId, playerId, score, roundResult } = data;
+    console.log(`Player ${playerId} scored ${roundResult.points} points in room ${roomId}`);
+    
+    // Broadcast to all OTHER players in the game room
+    socket.to(`game:${roomId}`).emit('scoreUpdate', {
+      playerId,
+      score,
+      roundResult,
+    });
+  });
+
   // Start game (host only)
   socket.on('startGame', async (data) => {
     const { roomId, playerId } = data;

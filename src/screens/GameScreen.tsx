@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import RNFS from 'react-native-fs';
+import io, { Socket } from 'socket.io-client';
 import { GameRoom, Player } from '../types/game';
 import Colors from '../theme/colors';
 
@@ -45,7 +46,18 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
     
     const loadImage = async () => {
       try {
-        console.log('PixelatedPhoto loading URI:', uri);
+        console.log('PixelatedPhoto loading URI:', uri?.substring(0, 50));
+        
+        // Check if already a data URL (base64 from database)
+        if (uri.startsWith('data:image')) {
+          // Extract just the base64 part after the comma
+          const base64Part = uri.split(',')[1];
+          if (!cancelled) {
+            setBase64Image(base64Part);
+            setError(null);
+          }
+          return;
+        }
         
         // For content:// URIs, read directly (RNFS supports this on Android)
         // For file:// URIs, strip the prefix
@@ -354,6 +366,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
   const [previousScores, setPreviousScores] = useState<{ [playerId: string]: number }>({}); // For animation
   const [timeLeft, setTimeLeft] = useState(6); // 6 seconds per round
   
+  // Socket.IO for real-time score sync
+  const socketRef = useRef<Socket | null>(null);
+  
   // Game statistics tracking
   const [currentStreak, setCurrentStreak] = useState(0);
   const [gameStats, setGameStats] = useState<{
@@ -371,6 +386,50 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
   
   const roundTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resultTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Setup Socket.IO for score synchronization
+  useEffect(() => {
+    const socket = io('https://photo-roulette-production-b12d.up.railway.app', {
+      reconnection: true,
+      transports: ['websocket'],
+    });
+    
+    socketRef.current = socket;
+    
+    socket.on('connect', () => {
+      console.log('Game socket connected:', socket.id);
+      // Join the game room for score updates
+      socket.emit('joinGame', {
+        roomId: room.id,
+        playerId: player.id,
+      });
+    });
+    
+    // Listen for score updates from other players
+    socket.on('scoreUpdate', (data: { playerId: string; score: number; roundResult: GuessResult }) => {
+      console.log('Received score update:', data);
+      
+      // Update scores for the player who scored
+      setScores(prev => ({
+        ...prev,
+        [data.playerId]: data.score,
+      }));
+      
+      // Add their result to roundResults
+      setRoundResults(prev => {
+        // Avoid duplicates
+        if (prev.some(r => r.playerId === data.playerId)) {
+          return prev;
+        }
+        return [...prev, data.roundResult];
+      });
+    });
+    
+    return () => {
+      console.log('Disconnecting game socket');
+      socket.disconnect();
+    };
+  }, [room.id, player.id]);
 
   // Initialize scores
   useEffect(() => {
@@ -532,11 +591,24 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
     // Trigger layout animation for score changes
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     
-    // Update scores
+    // Calculate new score
+    const newScore = scores[player.id] + points;
+    
+    // Update scores locally
     setScores(prev => ({
       ...prev,
-      [player.id]: prev[player.id] + points,
+      [player.id]: newScore,
     }));
+    
+    // Emit score update to other players via Socket.IO
+    if (socketRef.current) {
+      socketRef.current.emit('playerScored', {
+        roomId: room.id,
+        playerId: player.id,
+        score: newScore,
+        roundResult: result,
+      });
+    }
 
     // Show results after 1 second
     resultTimerRef.current = setTimeout(() => {
