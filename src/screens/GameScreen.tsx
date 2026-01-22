@@ -86,11 +86,12 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
     return () => { cancelled = true; };
   }, [uri]);
 
-  // Map pixelLevel to block size (3 phases: 4 → 2 → 1)
+  // Map pixelLevel to block size (3 phases: 32 → 16 → 8 pixels)
+  // Using larger blocks for visible pixelation effect on mobile screens
   const getBlockSize = (level: number): number => {
-    if (level >= 4) return 4;
-    if (level >= 2) return 2;
-    return 1;
+    if (level >= 4) return 32;  // Most pixelated
+    if (level >= 2) return 16;  // Medium
+    return 8;                    // Least pixelated (before clear)
   };
 
   // Send new blockSize to WebView when pixelLevel changes
@@ -425,6 +426,20 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       });
     });
     
+    // Listen for next round from host
+    socket.on('nextRound', (data: { round: number }) => {
+      console.log('Received nextRound:', data.round);
+      // Reset for next round
+      setCurrentRound(data.round);
+      setPixelLevel(mosaicEnabled ? 4 : 0);
+      setHasGuessed(false);
+      setGuessedPlayerId(null);
+      setShowResults(false);
+      setRoundStartTime(Date.now());
+      setRoundResults([]);
+      setTimeLeft(6);
+    });
+    
     return () => {
       console.log('Disconnecting game socket');
       socket.disconnect();
@@ -618,8 +633,18 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
 
   const handleNextRound = () => {
     if (currentRound + 1 < allPhotos.length) {
-      // Reset for next round
-      setCurrentRound(currentRound + 1);
+      const nextRoundNum = currentRound + 1;
+      
+      // Emit next round to all players
+      if (socketRef.current) {
+        socketRef.current.emit('advanceRound', {
+          roomId: room.id,
+          round: nextRoundNum,
+        });
+      }
+      
+      // Reset for next round locally too
+      setCurrentRound(nextRoundNum);
       setPixelLevel(4);
       setHasGuessed(false);
       setGuessedPlayerId(null);

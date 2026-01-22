@@ -117,37 +117,40 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
       
       // Use photos from server (already shuffled, same for all players)
       const serverPhotos = data.photos;
+      const serverNumRounds = data.numRounds || numRounds;
+      const serverMosaicEnabled = data.mosaicEnabled !== undefined ? data.mosaicEnabled : mosaicEnabled;
+      const serverGameType = data.gameType || gameType;
       
       if (!serverPhotos || serverPhotos.length === 0) {
         Alert.alert('Error', 'No photos available. All players need to upload photos first.');
         return;
       }
       
-      console.log('Received shared photos from server:', serverPhotos.length);
+      console.log('Received shared photos from server:', serverPhotos.length, 'numRounds:', serverNumRounds);
       
-      // Transform photos to game format (already shuffled by server)
+      // Transform photos to game format (already shuffled by server, sliced to numRounds)
       const gamePhotos = serverPhotos.map((photo: any) => ({
         photoUri: photo.url,
         ownerId: photo.ownerId,
         ownerName: photo.ownerName || 'Unknown',
-      })).slice(0, numRounds);
+      })).slice(0, serverNumRounds);
       
-      if (gameType === 'video') {
+      if (serverGameType === 'video') {
         navigation.replace('VideoGame', {
           room,
           player: currentPlayer,
           allPhotos: gamePhotos,
-          numRounds,
-          gameType,
+          numRounds: serverNumRounds,
+          gameType: serverGameType,
         });
       } else {
         navigation.replace('Game', {
           room,
           player: currentPlayer,
           allPhotos: gamePhotos,
-          numRounds,
-          gameType,
-          mosaicEnabled,
+          numRounds: serverNumRounds,
+          gameType: serverGameType,
+          mosaicEnabled: serverMosaicEnabled,
         });
       }
     });
@@ -275,10 +278,13 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     // Emit socket event to notify all players
     // The gameStarted event handler will handle navigation for all players (including host)
     if (socketRef.current) {
-      console.log('Start game - emitting startGame event');
+      console.log('Start game - emitting startGame event with numRounds:', numRounds);
       socketRef.current.emit('startGame', {
         roomId: room.id,
         playerId: currentPlayer.id,
+        numRounds: numRounds,
+        mosaicEnabled: mosaicEnabled,
+        gameType: gameType,
       });
       console.log('Start game event emitted');
       // Navigation will be handled by the gameStarted event listener

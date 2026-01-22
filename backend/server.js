@@ -574,10 +574,21 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Advance to next round - broadcast to all players
+  socket.on('advanceRound', (data) => {
+    const { roomId, round } = data;
+    console.log(`Advancing to round ${round} in room ${roomId}`);
+    
+    // Broadcast to all OTHER players in the game room
+    socket.to(`game:${roomId}`).emit('nextRound', {
+      round,
+    });
+  });
+
   // Start game (host only)
   socket.on('startGame', async (data) => {
-    const { roomId, playerId } = data;
-    console.log('startGame received:', { roomId, playerId, activeRoomsSize: activeRooms.size });
+    const { roomId, playerId, numRounds, mosaicEnabled, gameType } = data;
+    console.log('startGame received:', { roomId, playerId, numRounds, activeRoomsSize: activeRooms.size });
     
     let room = activeRooms.get(roomId);
     console.log('Room found in activeRooms:', room ? 'yes' : 'no');
@@ -694,13 +705,16 @@ io.on('connection', (socket) => {
     room.status = 'in_game';
     room.shuffledPhotos = shuffledPhotos; // Store for reference
     
-    // Notify all players in the room with the SAME shuffled photos
-    console.log('Broadcasting gameStarted to room:', roomId);
+    // Notify all players in the room with the SAME shuffled photos and game settings
+    console.log('Broadcasting gameStarted to room:', roomId, 'numRounds:', numRounds);
     io.to(`room:${roomId}`).emit('gameStarted', {
       status: 'in_game',
       roomId: roomId,
       round: 1,
-      photos: shuffledPhotos // All players get the same shuffled order
+      photos: shuffledPhotos, // All players get the same shuffled order
+      numRounds: numRounds || 20,
+      mosaicEnabled: mosaicEnabled !== undefined ? mosaicEnabled : true,
+      gameType: gameType || 'photo',
     });
   });
 
