@@ -13,8 +13,6 @@ import {
   UIManager,
   ImageBackground,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
-import RNFS from 'react-native-fs';
 import io, { Socket } from 'socket.io-client';
 import { GameRoom, Player } from '../types/game';
 import Colors from '../theme/colors';
@@ -24,234 +22,25 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Mosaic Pixelated Photo Component
-// Uses WebView canvas for TRUE mosaic pixelation (uniform color blocks)
-interface PixelatedPhotoProps {
+// Blurred Photo Component - Uses native blur for smooth reveal effect
+interface BlurredPhotoProps {
   uri: string;
-  pixelLevel: number; // 0-4: 0=clear, 4=most pixelated
+  blurLevel: number; // 0-4: 0=clear, 4=most blurry
   size: number;
 }
 
-const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }) => {
-  const [base64Image, setBase64Image] = useState<string | null>(null);
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [showClearImage, setShowClearImage] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const webViewRef = useRef<WebView>(null);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  // Load image as base64 for WebView
-  useEffect(() => {
-    let cancelled = false;
-    
-    const loadImage = async () => {
-      try {
-        console.log('PixelatedPhoto loading URI:', uri?.substring(0, 50));
-        
-        // Check if already a data URL (base64 from database)
-        if (uri.startsWith('data:image')) {
-          // Extract just the base64 part after the comma
-          const base64Part = uri.split(',')[1];
-          if (!cancelled) {
-            setBase64Image(base64Part);
-            setError(null);
-          }
-          return;
-        }
-        
-        // For content:// URIs, read directly (RNFS supports this on Android)
-        // For file:// URIs, strip the prefix
-        let readPath = uri;
-        if (uri.startsWith('file://')) {
-          readPath = uri.replace('file://', '');
-        }
-        
-        // Read the file as base64
-        const base64 = await RNFS.readFile(readPath, 'base64');
-        console.log('Base64 loaded, length:', base64.length);
-        
-        if (!cancelled) {
-          setBase64Image(base64);
-          setError(null);
-        }
-      } catch (err: any) {
-        console.error('Failed to load image as base64:', err);
-        if (!cancelled) {
-          setError(err.message || 'Failed to load image');
-        }
-      }
-    };
-    
-    loadImage();
-    return () => { cancelled = true; };
-  }, [uri]);
-
-  // Map pixelLevel to block size (3 phases: 32 → 16 → 8 pixels)
-  // Using larger blocks for visible pixelation effect on mobile screens
-  const getBlockSize = (level: number): number => {
-    if (level >= 4) return 32;  // Most pixelated
-    if (level >= 2) return 16;  // Medium
-    return 8;                    // Least pixelated (before clear)
+const BlurredPhoto: React.FC<BlurredPhotoProps> = ({ uri, blurLevel, size }) => {
+  // Map blur level to actual blur radius
+  // Less aggressive blur - still visible at start, gradually clears
+  const getBlurRadius = (level: number): number => {
+    if (level >= 4) return 12;  // Start blur - visible but challenging
+    if (level >= 3) return 8;   // Medium blur  
+    if (level >= 2) return 4;   // Light blur
+    if (level >= 1) return 2;   // Very light blur
+    return 0;                    // Clear
   };
 
-  // Send new blockSize to WebView when pixelLevel changes
-  useEffect(() => {
-    if (pixelLevel === 0) {
-      // Smoothly transition to clear image
-      setShowClearImage(true);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      setShowClearImage(false);
-      fadeAnim.setValue(0);
-      // Send updated blockSize to WebView
-      if (webViewRef.current && base64Image) {
-        const blockSize = getBlockSize(pixelLevel);
-        webViewRef.current.injectJavaScript(`
-          window.updateBlockSize(${blockSize});
-          true;
-        `);
-      }
-    }
-  }, [pixelLevel, base64Image]);
-
-  const blockSize = getBlockSize(pixelLevel);
-
-  // Show loading or error state
-  if (!base64Image) {
-    return (
-      <View style={{ 
-        width: size, 
-        height: size, 
-        borderRadius: 16, 
-        overflow: 'hidden', 
-        backgroundColor: Colors.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}>
-        <Text style={{ color: Colors.textMuted, fontSize: 14 }}>
-          {error ? `Error: ${error}` : 'Loading...'}
-        </Text>
-      </View>
-    );
-  }
-
-  // HTML for true mosaic pixelation using canvas
-  // Now supports dynamic blockSize updates without remounting
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=${size}, height=${size}, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { 
-          width: ${size}px;
-          height: ${size}px;
-          overflow: hidden;
-          background: #1a1a2e;
-        }
-        body { 
-          display: flex; 
-          justify-content: center; 
-          align-items: center;
-        }
-        canvas { 
-          display: block;
-          width: ${size}px;
-          height: ${size}px;
-        }
-      </style>
-    </head>
-    <body>
-      <canvas id="canvas" width="${size}" height="${size}"></canvas>
-      <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        let currentBlockSize = ${blockSize};
-        const size = ${size};
-        let cachedImageData = null;
-        
-        function drawMosaic(blockSize) {
-          if (!cachedImageData) return;
-          
-          const data = cachedImageData.data;
-          
-          // Clear main canvas
-          ctx.fillStyle = '#1a1a2e';
-          ctx.fillRect(0, 0, size, size);
-          
-          // Draw mosaic blocks
-          for (let y = 0; y < size; y += blockSize) {
-            for (let x = 0; x < size; x += blockSize) {
-              // Sample color from center of block
-              const sampleX = Math.min(x + Math.floor(blockSize / 2), size - 1);
-              const sampleY = Math.min(y + Math.floor(blockSize / 2), size - 1);
-              const idx = (sampleY * size + sampleX) * 4;
-              
-              const r = data[idx];
-              const g = data[idx + 1];
-              const b = data[idx + 2];
-              
-              // Draw solid color block
-              ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
-              ctx.fillRect(x, y, blockSize, blockSize);
-            }
-          }
-        }
-        
-        window.updateBlockSize = function(newBlockSize) {
-          currentBlockSize = newBlockSize;
-          drawMosaic(currentBlockSize);
-        };
-        
-        window.renderMosaic = function(base64Data) {
-          const img = new Image();
-          img.onload = function() {
-            // First draw the image scaled to fit (cover)
-            const scale = Math.max(size / img.width, size / img.height);
-            const scaledWidth = img.width * scale;
-            const scaledHeight = img.height * scale;
-            const offsetX = (size - scaledWidth) / 2;
-            const offsetY = (size - scaledHeight) / 2;
-            
-            // Draw to a temporary canvas first
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = size;
-            tempCanvas.height = size;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
-            
-            // Cache image data for reuse
-            cachedImageData = tempCtx.getImageData(0, 0, size, size);
-            
-            // Draw initial mosaic
-            drawMosaic(currentBlockSize);
-            
-            // Signal that we're done
-            window.ReactNativeWebView.postMessage('loaded');
-          };
-          img.onerror = function(e) {
-            window.ReactNativeWebView.postMessage('error: ' + e);
-          };
-          img.src = 'data:image/jpeg;base64,' + base64Data;
-        };
-        
-        // Signal ready to receive data
-        window.ReactNativeWebView.postMessage('ready');
-      </script>
-    </body>
-    </html>
-  `;
-
-  // JavaScript to inject the base64 data after WebView is ready
-  const injectedJS = `
-    window.renderMosaic('${base64Image}');
-    true;
-  `;
+  const blurRadius = getBlurRadius(blurLevel);
 
   return (
     <View style={{ 
@@ -261,70 +50,12 @@ const PixelatedPhoto: React.FC<PixelatedPhotoProps> = ({ uri, pixelLevel, size }
       overflow: 'hidden',
       backgroundColor: Colors.background,
     }}>
-      {/* Mosaic WebView - always rendered to avoid blinking */}
-      <WebView
-        ref={webViewRef}
-        source={{ html }}
-        injectedJavaScript={injectedJS}
-        style={{ 
-          width: size, 
-          height: size,
-          backgroundColor: 'transparent',
-          opacity: imageLoaded ? 1 : 0,
-        }}
-        scrollEnabled={false}
-        scalesPageToFit={false}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        onMessage={(event) => {
-          const msg = event.nativeEvent.data;
-          if (msg === 'loaded') {
-            setImageLoaded(true);
-          } else if (msg.startsWith('error')) {
-            console.error('WebView error:', msg);
-          }
-        }}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        originWhitelist={['*']}
-        mixedContentMode="always"
-        allowFileAccess={true}
-        allowFileAccessFromFileURLs={true}
-        allowUniversalAccessFromFileURLs={true}
+      <Image
+        source={{ uri }}
+        style={{ width: size, height: size }}
+        resizeMode="cover"
+        blurRadius={blurRadius}
       />
-      
-      {/* Clear image overlay - fades in when pixelLevel reaches 0 */}
-      {showClearImage && (
-        <Animated.View style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          opacity: fadeAnim,
-        }}>
-          <Image
-            source={{ uri }}
-            style={{ width: size, height: size }}
-            resizeMode="cover"
-          />
-        </Animated.View>
-      )}
-      
-      {!imageLoaded && (
-        <View style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: Colors.background,
-        }}>
-          <Text style={{ color: Colors.textMuted, fontSize: 14 }}>Loading...</Text>
-        </View>
-      )}
     </View>
   );
 };
@@ -356,7 +87,12 @@ const ROUND_DURATION = 6000; // 6 seconds in ms
 export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => {
   const { room, player, allPhotos, mosaicEnabled = true } = route.params;
   
+  // Log the photos we received for debugging
+  console.log(`[GameScreen] Player ${player.name} received ${allPhotos.length} photos`);
+  console.log(`[GameScreen] First photo ID/owner:`, allPhotos[0]?.ownerId, allPhotos[0]?.ownerName);
+  
   const [currentRound, setCurrentRound] = useState(0);
+  const currentRoundRef = useRef(0); // Ref to prevent stale closures
   const [pixelLevel, setPixelLevel] = useState(mosaicEnabled ? 4 : 0); // 3 phases: 4=most pixelated, 2=medium, 0=clear
   const [roundStartTime, setRoundStartTime] = useState(Date.now());
   const [hasGuessed, setHasGuessed] = useState(false);
@@ -428,16 +164,20 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
     
     // Listen for next round from host
     socket.on('nextRound', (data: { round: number }) => {
-      console.log('Received nextRound:', data.round);
-      // Reset for next round
-      setCurrentRound(data.round);
-      setPixelLevel(mosaicEnabled ? 4 : 0);
-      setHasGuessed(false);
-      setGuessedPlayerId(null);
-      setShowResults(false);
-      setRoundStartTime(Date.now());
-      setRoundResults([]);
-      setTimeLeft(6);
+      console.log('Received nextRound:', data.round, 'current:', currentRoundRef.current);
+      // Only update if we're not already at this round (prevents double advance)
+      if (data.round > currentRoundRef.current) {
+        currentRoundRef.current = data.round;
+        // Reset for next round
+        setCurrentRound(data.round);
+        setPixelLevel(mosaicEnabled ? 4 : 0);
+        setHasGuessed(false);
+        setGuessedPlayerId(null);
+        setShowResults(false);
+        setRoundStartTime(Date.now());
+        setRoundResults([]);
+        setTimeLeft(6);
+      }
     });
     
     return () => {
@@ -635,6 +375,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
     if (currentRound + 1 < allPhotos.length) {
       const nextRoundNum = currentRound + 1;
       
+      // Update ref first to prevent receiving our own event
+      currentRoundRef.current = nextRoundNum;
+      
       // Emit next round to all players
       if (socketRef.current) {
         socketRef.current.emit('advanceRound', {
@@ -645,7 +388,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
       
       // Reset for next round locally too
       setCurrentRound(nextRoundNum);
-      setPixelLevel(4);
+      setPixelLevel(mosaicEnabled ? 4 : 0);
       setHasGuessed(false);
       setGuessedPlayerId(null);
       setShowResults(false);
@@ -840,9 +583,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({ route, navigation }) => 
 
       <View style={styles.photoContainer}>
         {mosaicEnabled ? (
-          <PixelatedPhoto
+          <BlurredPhoto
             uri={currentPhoto.photoUri}
-            pixelLevel={pixelLevel}
+            blurLevel={pixelLevel}
             size={PHOTO_SIZE}
           />
         ) : (

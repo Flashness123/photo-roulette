@@ -89,7 +89,21 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     myPhotosRef.current = myPhotos;
   }, [myPhotos]);
 
+  // Refs for values that may change but we need in socket callback
+  const numRoundsRef = useRef(numRounds);
+  const mosaicEnabledRef = useRef(mosaicEnabled);
+  const gameTypeRef = useRef(gameType);
+  const roomRef = useRef(room);
+  
+  useEffect(() => {
+    numRoundsRef.current = numRounds;
+    mosaicEnabledRef.current = mosaicEnabled;
+    gameTypeRef.current = gameType;
+    roomRef.current = room;
+  }, [numRounds, mosaicEnabled, gameType, room]);
+
   // Setup Socket.IO connection for real-time game start
+  // IMPORTANT: Only depend on stable IDs to prevent socket reconnection
   useEffect(() => {
     const socket = io('https://photo-roulette-production-b12d.up.railway.app', {
       reconnection: true,
@@ -117,14 +131,18 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
       
       // Use photos from server (already shuffled, same for all players)
       const serverPhotos = data.photos;
-      const serverNumRounds = data.numRounds || numRounds;
-      const serverMosaicEnabled = data.mosaicEnabled !== undefined ? data.mosaicEnabled : mosaicEnabled;
-      const serverGameType = data.gameType || gameType;
+      const serverNumRounds = data.numRounds || numRoundsRef.current;
+      const serverMosaicEnabled = data.mosaicEnabled !== undefined ? data.mosaicEnabled : mosaicEnabledRef.current;
+      const serverGameType = data.gameType || gameTypeRef.current;
       
       if (!serverPhotos || serverPhotos.length === 0) {
         Alert.alert('Error', 'No photos available. All players need to upload photos first.');
         return;
       }
+      
+      // Log photo IDs for debugging - should be same for all players
+      console.log('[RoomScreen] Received photos, first 3 IDs:', 
+        serverPhotos.slice(0, 3).map((p: any) => ({ id: p.id, owner: p.ownerName })));
       
       console.log('Received shared photos from server:', serverPhotos.length, 'numRounds:', serverNumRounds);
       
@@ -135,9 +153,14 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
         ownerName: photo.ownerName || 'Unknown',
       })).slice(0, serverNumRounds);
       
+      console.log('[RoomScreen] Game photos array, first owner:', gamePhotos[0]?.ownerName);
+      
+      // Use refs for current room state
+      const currentRoom = roomRef.current;
+      
       if (serverGameType === 'video') {
         navigation.replace('VideoGame', {
-          room,
+          room: currentRoom,
           player: currentPlayer,
           allPhotos: gamePhotos,
           numRounds: serverNumRounds,
@@ -145,7 +168,7 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
         });
       } else {
         navigation.replace('Game', {
-          room,
+          room: currentRoom,
           player: currentPlayer,
           allPhotos: gamePhotos,
           numRounds: serverNumRounds,
@@ -157,7 +180,6 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
 
     socket.on('playerLeft', (data: any) => {
       console.log('Player left event received:', data);
-      console.log('Current players before fetch:', room.players.map(p => p.name));
       // Immediately fetch updated room data
       fetchRoomData();
     });
@@ -178,13 +200,21 @@ export const RoomScreen: React.FC<RoomScreenProps> = ({ route, navigation }) => 
     socket.on('disconnect', () => {
       console.log('Socket disconnected');
     });
+    
+    socket.on('reconnect', () => {
+      console.log('Socket reconnected, rejoining room');
+      socket.emit('joinRoom', {
+        roomId: room.id,
+        playerId: currentPlayer.id,
+      });
+    });
 
     return () => {
       console.log('Cleanup: disconnecting socket');
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [room.id, currentPlayer.id, numRounds, gameType, mosaicEnabled, navigation, room, currentPlayer]);
+  }, [room.id, currentPlayer.id, navigation]); // Only stable dependencies!
 
   // Regular polling to update room data
   useEffect(() => {
