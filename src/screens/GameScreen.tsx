@@ -31,12 +31,12 @@ interface BlurredPhotoProps {
 
 const BlurredPhoto: React.FC<BlurredPhotoProps> = ({ uri, blurLevel, size }) => {
   // Map blur level to actual blur radius
-  // Less aggressive blur - still visible at start, gradually clears
+  // Minimal blur - image always clearly visible, just slight softness at start
   const getBlurRadius = (level: number): number => {
-    if (level >= 4) return 12;  // Start blur - visible but challenging
-    if (level >= 3) return 8;   // Medium blur  
-    if (level >= 2) return 4;   // Light blur
-    if (level >= 1) return 2;   // Very light blur
+    if (level >= 4) return 6;   // Start blur - clearly visible, slight softness
+    if (level >= 3) return 4;   // Light blur  
+    if (level >= 2) return 2;   // Very light blur
+    if (level >= 1) return 1;   // Barely blurred
     return 0;                    // Clear
   };
 
