@@ -13,6 +13,7 @@ import {
 import { Player } from '../types/game';
 import Colors from '../theme/colors';
 import { adService } from '../services/AdService';
+import { config } from '../config';
 
 interface FinalResultsScreenProps {
   route: any;
@@ -47,6 +48,29 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
   const formatTime = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
   const [isLoadingAd, setIsLoadingAd] = useState(false);
+
+  // Delete room and all photos from database
+  const cleanupRoom = async () => {
+    try {
+      console.log('Cleaning up room:', room.id);
+      const response = await fetch(`${config.backend.url}/api/rooms/${room.id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        console.log('Room cleaned up successfully');
+      } else {
+        console.error('Failed to cleanup room:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error cleaning up room:', error);
+    }
+  };
+
+  // Handle back to home - cleanup room and photos
+  const handleBackToHome = async () => {
+    await cleanupRoom();
+    navigation.navigate('Welcome');
+  };
 
   // Handle play again - show ad first, then go back to room screen
   const handlePlayAgain = async () => {
@@ -199,7 +223,7 @@ export const FinalResultsScreen: React.FC<FinalResultsScreenProps> = ({
         {/* Back to Home Button */}
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.navigate('Welcome')}
+          onPress={handleBackToHome}
           activeOpacity={0.8}
         >
           <Text style={styles.backButtonText}>Back to Home</Text>

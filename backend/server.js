@@ -193,6 +193,57 @@ app.get('/api/rooms/:roomId', async (req, res) => {
   }
 });
 
+// Delete all photos from database (admin cleanup)
+app.delete('/api/photos/all', async (req, res) => {
+  try {
+    console.log('Deleting all photos from database...');
+    
+    const { error } = await supabase
+      .from('photos')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all (neq trick)
+    
+    if (error) {
+      console.error('Error deleting photos:', error);
+      return res.status(500).json({ error: 'Failed to delete photos' });
+    }
+    
+    console.log('All photos deleted successfully');
+    res.json({ success: true, message: 'All photos deleted' });
+  } catch (error) {
+    console.error('Error deleting all photos:', error);
+    res.status(500).json({ error: 'Failed to delete photos' });
+  }
+});
+
+// Delete a room and all its data (photos, players, etc.)
+app.delete('/api/rooms/:roomId', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    console.log('Deleting room and all data:', roomId);
+    
+    // Delete room from database (CASCADE will delete photos and players)
+    const { error } = await supabase
+      .from('game_rooms')
+      .delete()
+      .eq('id', roomId);
+    
+    if (error) {
+      console.error('Error deleting room:', error);
+      return res.status(500).json({ error: 'Failed to delete room' });
+    }
+    
+    // Remove from active rooms
+    activeRooms.delete(roomId);
+    
+    console.log('Room deleted successfully:', roomId);
+    res.json({ success: true, message: 'Room and all data deleted' });
+  } catch (error) {
+    console.error('Error deleting room:', error);
+    res.status(500).json({ error: 'Failed to delete room' });
+  }
+});
+
 // Lock in photos for a player
 app.post('/api/rooms/:roomId/lock-photos', async (req, res) => {
   try {
