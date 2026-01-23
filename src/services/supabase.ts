@@ -25,14 +25,14 @@ export async function uploadPhoto(
   try {
     console.log('Starting photo upload, original URI:', localUri);
     
-    // Resize the image to a reasonable size (400x400 max, with high compression)
-    // This reduces file size from megabytes to ~20-50KB
+    // Resize the image to a reasonable size for mobile display
+    // 800x800 at 75% quality gives good visuals while keeping file size manageable (~100-200KB)
     const resized = await ImageResizer.createResizedImage(
       localUri,
-      400, // max width
-      400, // max height
+      800, // max width
+      800, // max height
       'JPEG',
-      50, // quality (0-100)
+      75, // quality (0-100) - higher for better visuals
       0, // rotation
       undefined, // output path (undefined = temp)
       false, // keep meta
