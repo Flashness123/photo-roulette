@@ -1,11 +1,8 @@
 # Pic Roulette
 
-A multiplayer party game where you guess whose picture is on the screen. Everyone
-adds some of their own photos, then you take turns guessing who each one belongs
-to — quick, silly, and best with friends.
+A multiplayer party game where you guess whose picture is on the screen. 
 
-It's a real, published game — you can download it from the Google Play Store under
-the name **Pic Roulette**.
+Download it from the Google Play Store under the name **Pic Roulette**.
 
 I built and shipped the whole thing myself: the mobile app, the multiplayer that
 keeps everyone's game in sync, and the backend behind it.
