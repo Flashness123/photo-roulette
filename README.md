@@ -1,33 +1,28 @@
-# Photo Roulette
+# Pic Roulette
 
-A multiplayer party game for mobile: everyone drops in some of their own photos,
-then you all take turns guessing whose photo just popped up. Fast, silly, best
-played with friends in the same room. It's live on the Google Play Store.
+A multiplayer party game where you guess whose picture is on the screen. Everyone
+adds some of their own photos, then you take turns guessing who each one belongs
+to — quick, silly, and best with friends.
 
-I built the whole thing end to end — the React Native app, the realtime
-multiplayer backend, and the database — and shipped it to real users, which was
-the fun (and painful) part.
+It's a real, published game — you can download it from the Google Play Store under
+the name **Pic Roulette**.
 
-## How it's put together
+I built and shipped the whole thing myself: the mobile app, the multiplayer that
+keeps everyone's game in sync, and the backend behind it.
 
-- **App** — React Native + TypeScript.
-- **Realtime backend** — a Node server using Socket.IO for the live game rooms,
-  deployed on Railway.
-- **Data & auth** — Supabase (Postgres); the schema is in `supabase-schema.sql`.
+## Built with
+
+React Native + TypeScript on the front end, a Node/Socket.IO server for realtime
+multiplayer (hosted on Railway), and Supabase for data.
 
 ## Running it yourself
 
 ```sh
 npm install
-cp .env.example .env      # fill in your own Supabase + backend values
-npm start                 # Metro
+cp .env.example .env      # add your own Supabase + backend values
+npm start
 npm run android           # or: npm run ios
 ```
 
-The backend lives in `backend/` and also reads its config from environment
-variables (see `.env.example`).
-
-## Config
-
-No secrets are committed — the app reads `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
-the backend URLs from the environment. Copy `.env.example` and fill in your own.
+No secrets are committed — config is read from the environment (see
+`.env.example`).
