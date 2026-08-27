@@ -1,8 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
-  'https://jovuumvoqvpdjupqwaze.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdnV1bXZvcXZwZGp1cHF3YXplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NjM5MDgsImV4cCI6MjA4MDQzOTkwOH0.IjBS6xeP5yNdx-17wDR8H4e50UGCYTD114QKOc8yq70'
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
 );
 
 async function addPhotosLockedColumn() {

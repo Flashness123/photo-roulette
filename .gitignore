@@ -84,3 +84,7 @@ android/gradle.properties
 backend/node_modules/
 backend/.env
 backend/npm-debug.log*
+
+# Local env
+.env
+.env.local
